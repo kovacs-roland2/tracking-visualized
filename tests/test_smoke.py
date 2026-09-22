@@ -1,2 +1,4 @@
 def test_package_imports():
-    assert False
+    import tracking_visualized
+
+    assert tracking_visualized is not None
