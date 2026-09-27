@@ -2,14 +2,19 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
+DEFAULT_DATA_DIR = Path("data")
+DEFAULT_RAW_DATA_DIR = Path("data/raw")
+DEFAULT_PROCESSED_DATA_DIR = Path("data/processed")
+DEFAULT_OUTPUT_DIR = Path("output")
+
 
 class PathConfig(BaseModel):
     """Paths used by the application."""
 
-    data_dir: Path = Path("data")
-    raw_data_dir: Path = Path("data/raw")
-    processed_data_dir: Path = Path("data/processed")
-    output_dir: Path = Path("output")
+    data_dir: Path = DEFAULT_DATA_DIR
+    raw_data_dir: Path = DEFAULT_RAW_DATA_DIR
+    processed_data_dir: Path = DEFAULT_PROCESSED_DATA_DIR
+    output_dir: Path = DEFAULT_OUTPUT_DIR
 
 
 class RenderingConfig(BaseModel):
@@ -44,9 +49,12 @@ class VideoConfig(BaseModel):
     @field_validator("format")
     @classmethod
     def validate_format(cls, value: str) -> str:
-        if value.lower() != "mp4":
+        normalized_value = str(value).strip().lower()
+
+        if normalized_value != "mp4":
             raise ValueError("Only MP4 output is currently supported.")
-        return value.lower()
+
+        return normalized_value
 
     @property
     def aspect_ratio(self) -> float:
@@ -76,3 +84,12 @@ class AppConfig(BaseModel):
     rendering: RenderingConfig = Field(default_factory=RenderingConfig)
     video: VideoConfig = Field(default_factory=VideoConfig)
     sequence: SequenceConfig = Field(default_factory=SequenceConfig)
+
+
+__all__ = [
+    "AppConfig",
+    "PathConfig",
+    "RenderingConfig",
+    "SequenceConfig",
+    "VideoConfig",
+]
