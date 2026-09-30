@@ -5,6 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from tracking_visualized.providers.dfl.utils import (
+    milliseconds_to_seconds,
+    require_attribute,
+    require_element,
+)
+
 
 class TeamSide(StrEnum):
     HOME = "home"
@@ -73,71 +79,6 @@ class DflMatchMetadataError(ValueError):
     """Raised when DFL match metadata is missing or inconsistent."""
 
 
-def _require_element(
-    parent: ET.Element,
-    tag: str,
-) -> ET.Element:
-    """
-    Requires an XML element with the given tag to exist as a child of the parent.
-
-    Args:
-        parent: The parent XML element.
-        tag: The tag of the required child element.
-
-    Returns:
-        The required child XML element.
-    """
-    element = parent.find(tag)
-
-    if element is None:
-        raise DflMatchMetadataError(f"Missing required XML element <{tag}>.")
-
-    return element
-
-
-def _require_attribute(
-    element: ET.Element,
-    attribute: str,
-) -> str:
-    """
-    Requires an XML attribute to exist on the given element.
-
-    Args:
-        element: The XML element.
-        attribute: The name of the required attribute.
-
-    Returns:
-        The value of the required attribute.
-    """
-    value = element.get(attribute)
-
-    if value is None or not value.strip():
-        raise DflMatchMetadataError(f"Missing required attribute '{attribute}' on <{element.tag}>.")
-
-    return value
-
-
-def _milliseconds_to_seconds(value: str) -> float:
-    """
-    Converts a string representing milliseconds to seconds.
-
-    Args:
-        value: The string representing milliseconds.
-
-    Returns:
-        The equivalent duration in seconds.
-    """
-    try:
-        milliseconds = int(value)
-    except ValueError as exc:
-        raise DflMatchMetadataError(f"Expected duration in milliseconds, got '{value}'.") from exc
-
-    if milliseconds <= 0:
-        raise DflMatchMetadataError("Period duration must be positive.")
-
-    return milliseconds / 1000
-
-
 def _parse_periods(
     game_information: ET.Element,
 ) -> tuple[PeriodMetadata, PeriodMetadata]:
@@ -152,33 +93,41 @@ def _parse_periods(
     """
     first_half = PeriodMetadata(
         number=1,
-        total_duration_seconds=_milliseconds_to_seconds(
-            _require_attribute(
+        total_duration_seconds=milliseconds_to_seconds(
+            require_attribute(
                 game_information,
                 "TotalTimeFirstHalf",
-            )
+                DflMatchMetadataError,
+            ),
+            DflMatchMetadataError,
         ),
-        playing_duration_seconds=_milliseconds_to_seconds(
-            _require_attribute(
+        playing_duration_seconds=milliseconds_to_seconds(
+            require_attribute(
                 game_information,
                 "PlayingTimeFirstHalf",
-            )
+                DflMatchMetadataError,
+            ),
+            DflMatchMetadataError,
         ),
     )
 
     second_half = PeriodMetadata(
         number=2,
-        total_duration_seconds=_milliseconds_to_seconds(
-            _require_attribute(
+        total_duration_seconds=milliseconds_to_seconds(
+            require_attribute(
                 game_information,
                 "TotalTimeSecondHalf",
-            )
+                DflMatchMetadataError,
+            ),
+            DflMatchMetadataError,
         ),
-        playing_duration_seconds=_milliseconds_to_seconds(
-            _require_attribute(
+        playing_duration_seconds=milliseconds_to_seconds(
+            require_attribute(
                 game_information,
                 "PlayingTimeSecondHalf",
-            )
+                DflMatchMetadataError,
+            ),
+            DflMatchMetadataError,
         ),
     )
 
@@ -206,9 +155,9 @@ def _parse_teams(
     away_team: TeamMetadata | None = None
 
     for team_element in team_elements:
-        team_id = _require_attribute(team_element, "TeamId")
-        name = _require_attribute(team_element, "TeamName")
-        role = _require_attribute(team_element, "Role")
+        team_id = require_attribute(team_element, "TeamId", DflMatchMetadataError)
+        name = require_attribute(team_element, "TeamName", DflMatchMetadataError)
+        role = require_attribute(team_element, "Role", DflMatchMetadataError)
 
         if role == "home":
             if home_team is not None:
@@ -259,22 +208,26 @@ def _validate_team_consistency(
     Returns:
         None
     """
-    expected_home_id = _require_attribute(
+    expected_home_id = require_attribute(
         general,
         "HomeTeamId",
+        DflMatchMetadataError,
     )
-    expected_away_id = _require_attribute(
+    expected_away_id = require_attribute(
         general,
         "GuestTeamId",
+        DflMatchMetadataError,
     )
 
-    expected_home_name = _require_attribute(
+    expected_home_name = require_attribute(
         general,
         "HomeTeamName",
+        DflMatchMetadataError,
     )
-    expected_away_name = _require_attribute(
+    expected_away_name = require_attribute(
         general,
         "GuestTeamName",
+        DflMatchMetadataError,
     )
 
     if home_team.team_id != expected_home_id:
@@ -310,24 +263,28 @@ def load_match_metadata(path: Path) -> MatchMetadata:
 
     root = tree.getroot()
 
-    match_information = _require_element(
+    match_information = require_element(
         root,
         "MatchInformation",
+        DflMatchMetadataError,
     )
 
-    general = _require_element(
+    general = require_element(
         match_information,
         "General",
+        DflMatchMetadataError,
     )
 
-    teams_element = _require_element(
+    teams_element = require_element(
         match_information,
         "Teams",
+        DflMatchMetadataError,
     )
 
-    game_information = _require_element(
+    game_information = require_element(
         match_information,
         "OtherGameInformation",
+        DflMatchMetadataError,
     )
 
     home_team, away_team = _parse_teams(teams_element)
@@ -340,37 +297,43 @@ def load_match_metadata(path: Path) -> MatchMetadata:
 
     try:
         match_day = int(
-            _require_attribute(
+            require_attribute(
                 general,
                 "MatchDay",
+                DflMatchMetadataError,
             )
         )
     except ValueError as exc:
         raise DflMatchMetadataError("MatchDay must be an integer.") from exc
 
     return MatchMetadata(
-        match_id=_require_attribute(
+        match_id=require_attribute(
             general,
             "MatchId",
+            DflMatchMetadataError,
         ),
         competition=CompetitionMetadata(
-            competition_id=_require_attribute(
+            competition_id=require_attribute(
                 general,
                 "CompetitionId",
+                DflMatchMetadataError,
             ),
-            name=_require_attribute(
+            name=require_attribute(
                 general,
                 "CompetitionName",
+                DflMatchMetadataError,
             ),
         ),
         season=SeasonMetadata(
-            season_id=_require_attribute(
+            season_id=require_attribute(
                 general,
                 "SeasonId",
+                DflMatchMetadataError,
             ),
-            name=_require_attribute(
+            name=require_attribute(
                 general,
                 "Season",
+                DflMatchMetadataError,
             ),
         ),
         match_day=match_day,

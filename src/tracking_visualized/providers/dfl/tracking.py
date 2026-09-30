@@ -5,6 +5,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Iterator
 
+from tracking_visualized.providers.dfl.utils import (
+    optional_float,
+    optional_int,
+    require_attribute,
+)
+
 
 class TrackingPeriod(StrEnum):
     FIRST_HALF = "first_half"
@@ -55,66 +61,6 @@ class PlayerReference:
 
 class DflTrackingError(ValueError):
     """Raised when DFL tracking data is malformed or inconsistent."""
-
-
-def _require_attribute(
-    element: ET.Element,
-    attribute: str,
-) -> str:
-    """
-    Requires an XML attribute to exist on the given element.
-
-    Args:
-        element: The XML element.
-        attribute: The name of the required attribute.
-
-    Returns:
-        The value of the required attribute.
-    """
-    value = element.get(attribute)
-
-    if value is None or not value.strip():
-        raise DflTrackingError(f"Missing required attribute '{attribute}' on <{element.tag}>.")
-
-    return value
-
-
-def _optional_float(value: str | None) -> float | None:
-    """
-    Converts a string to a float, if possible.
-
-    Args:
-        value: The string to convert.
-
-    Returns:
-        The converted float, or None if the string is empty or not a valid number.
-    """
-    if value is None or not value.strip():
-        return None
-
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise DflTrackingError(f"Invalid numeric value '{value}'.") from exc
-
-
-def _optional_int(value: str | None) -> int | None:
-    """
-    Converts a string to an integer, if possible.
-
-    Args:
-        value: The string to convert.
-
-    Returns:
-        The converted integer, or None if the string is empty or not a valid number.
-    """
-    if value is None or not value.strip():
-        return None
-
-    try:
-        return int(value)
-    except ValueError as exc:
-        raise DflTrackingError(f"Invalid integer value '{value}'.") from exc
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -193,9 +139,10 @@ def _load_player_index(
     if teams is None:
         raise DflTrackingError("Missing <Teams> element.")
 
-    home_team_id = _require_attribute(
+    home_team_id = require_attribute(
         general,
         "HomeTeamId",
+        DflTrackingError,
     )
 
     away_team_id = general.get("GuestTeamId") or general.get("AwayTeamId")
@@ -206,9 +153,10 @@ def _load_player_index(
     player_index: dict[str, PlayerReference] = {}
 
     for team_element in teams.findall("Team"):
-        team_id = _require_attribute(
+        team_id = require_attribute(
             team_element,
             "TeamId",
+            DflTrackingError,
         )
 
         if team_id == home_team_id:
@@ -224,12 +172,13 @@ def _load_player_index(
             continue
 
         for player in players.findall("Player"):
-            person_id = _require_attribute(
+            person_id = require_attribute(
                 player,
                 "PersonId",
+                DflTrackingError,
             )
 
-            shirt_number = _optional_int(player.get("ShirtNumber"))
+            shirt_number = optional_int(player.get("ShirtNumber"), DflTrackingError)
 
             player_index[person_id] = PlayerReference(
                 person_id=person_id,
@@ -309,13 +258,13 @@ def _parse_player_frame(
         A PlayerTrackingSample object containing the parsed tracking data.
     """
     try:
-        frame_number = int(_require_attribute(frame, "N"))
+        frame_number = int(require_attribute(frame, "N", DflTrackingError))
     except DflTrackingError:
         raise
     except ValueError as exc:
         raise DflTrackingError("Tracking frame number must be an integer.") from exc
 
-    timestamp = _parse_timestamp(_require_attribute(frame, "T"))
+    timestamp = _parse_timestamp(require_attribute(frame, "T", DflTrackingError))
 
     return PlayerTrackingSample(
         frame_number=frame_number,
@@ -325,8 +274,8 @@ def _parse_player_frame(
         team_id=player.team_id,
         team=player.team,
         shirt_number=player.shirt_number,
-        x=_optional_float(frame.get("X")),
-        y=_optional_float(frame.get("Y")),
+        x=optional_float(frame.get("X"), DflTrackingError),
+        y=optional_float(frame.get("Y"), DflTrackingError),
     )
 
 
@@ -345,21 +294,21 @@ def _parse_ball_frame(
         A BallTrackingSample object containing the parsed tracking data.
     """
     try:
-        frame_number = int(_require_attribute(frame, "N"))
+        frame_number = int(require_attribute(frame, "N", DflTrackingError))
     except DflTrackingError:
         raise
     except ValueError as exc:
         raise DflTrackingError("Tracking frame number must be an integer.") from exc
 
-    timestamp = _parse_timestamp(_require_attribute(frame, "T"))
+    timestamp = _parse_timestamp(require_attribute(frame, "T", DflTrackingError))
 
     return BallTrackingSample(
         frame_number=frame_number,
         timestamp=timestamp,
         period=period,
-        x=_optional_float(frame.get("X")),
-        y=_optional_float(frame.get("Y")),
-        z=_optional_float(frame.get("Z")),
+        x=optional_float(frame.get("X"), DflTrackingError),
+        y=optional_float(frame.get("Y"), DflTrackingError),
+        z=optional_float(frame.get("Z"), DflTrackingError),
         possession_team=_parse_possession(frame.get("BallPossession")),
         is_alive=_parse_ball_status(frame.get("BallStatus")),
     )
@@ -400,16 +349,18 @@ def iter_tracking_samples(
             if frame_set.tag != "FrameSet":
                 continue
 
-            game_section = _require_attribute(
+            game_section = require_attribute(
                 frame_set,
                 "GameSection",
+                DflTrackingError,
             )
 
             period = _parse_period(game_section)
 
-            team_id = _require_attribute(
+            team_id = require_attribute(
                 frame_set,
                 "TeamId",
+                DflTrackingError,
             )
 
             if team_id.lower() == "ball":
