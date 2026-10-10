@@ -1,3 +1,10 @@
+from tracking_visualized.providers.dfl.events import (
+    DflEventError,
+    MatchPeriod,
+    ShotEvent,
+    ShotOutcome,
+    load_shot_events,
+)
 from tracking_visualized.providers.dfl.match_metadata import (
     CompetitionMetadata,
     DflMatchMetadataError,
@@ -32,4 +39,9 @@ __all__ = [
     "TrackingPeriod",
     "TrackingTeam",
     "iter_tracking_samples",
+    "DflEventError",
+    "MatchPeriod",
+    "ShotEvent",
+    "ShotOutcome",
+    "load_shot_events",
 ]
