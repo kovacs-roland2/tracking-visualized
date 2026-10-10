@@ -5,9 +5,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Iterator
 
+from tracking_visualized.providers.dfl.shared import PlayerReference, load_player_index
 from tracking_visualized.providers.dfl.utils import (
     optional_float,
-    optional_int,
+    parse_timestamp,
     require_attribute,
 )
 
@@ -51,39 +52,8 @@ class BallTrackingSample:
     is_alive: bool | None
 
 
-@dataclass(frozen=True, slots=True)
-class PlayerReference:
-    person_id: str
-    team_id: str
-    team: TrackingTeam
-    shirt_number: int | None
-
-
 class DflTrackingError(ValueError):
     """Raised when DFL tracking data is malformed or inconsistent."""
-
-
-def _parse_timestamp(value: str) -> datetime:
-    """
-    Parses an ISO-8601 timestamp string into a datetime object.
-
-    Args:
-        value: The ISO-8601 timestamp string to parse.
-
-    Returns:
-        A datetime object representing the parsed timestamp.
-    """
-    normalized = value.replace("Z", "+00:00")
-
-    try:
-        timestamp = datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise DflTrackingError(f"Invalid ISO-8601 timestamp '{value}'.") from exc
-
-    if timestamp.tzinfo is None:
-        raise DflTrackingError(f"Tracking timestamp must include timezone information: '{value}'.")
-
-    return timestamp
 
 
 def _parse_period(value: str) -> TrackingPeriod:
@@ -104,93 +74,6 @@ def _parse_period(value: str) -> TrackingPeriod:
         return TrackingPeriod.SECOND_HALF
 
     raise DflTrackingError(f"Unsupported game section '{value}'.")
-
-
-def _load_player_index(
-    metadata_path: Path,
-) -> dict[str, PlayerReference]:
-    """
-    Load a mapping of player person IDs to PlayerReference objects from the match metadata XML.
-
-    Args:
-        metadata_path: The path to the match metadata XML file.
-
-    Returns:
-        A dictionary mapping player person IDs to PlayerReference objects.
-    """
-    try:
-        tree = ET.parse(metadata_path)
-    except ET.ParseError as exc:
-        raise DflTrackingError(f"Invalid match metadata XML: {metadata_path}") from exc
-
-    root = tree.getroot()
-
-    match_information = root.find("MatchInformation")
-
-    if match_information is None:
-        raise DflTrackingError("Missing <MatchInformation> element.")
-
-    general = match_information.find("General")
-    teams = match_information.find("Teams")
-
-    if general is None:
-        raise DflTrackingError("Missing <General> element.")
-
-    if teams is None:
-        raise DflTrackingError("Missing <Teams> element.")
-
-    home_team_id = require_attribute(
-        general,
-        "HomeTeamId",
-        DflTrackingError,
-    )
-
-    away_team_id = general.get("GuestTeamId") or general.get("AwayTeamId")
-
-    if not away_team_id:
-        raise DflTrackingError("Missing away/guest team ID.")
-
-    player_index: dict[str, PlayerReference] = {}
-
-    for team_element in teams.findall("Team"):
-        team_id = require_attribute(
-            team_element,
-            "TeamId",
-            DflTrackingError,
-        )
-
-        if team_id == home_team_id:
-            team = TrackingTeam.HOME
-        elif team_id == away_team_id:
-            team = TrackingTeam.AWAY
-        else:
-            continue
-
-        players = team_element.find("Players")
-
-        if players is None:
-            continue
-
-        for player in players.findall("Player"):
-            person_id = require_attribute(
-                player,
-                "PersonId",
-                DflTrackingError,
-            )
-
-            shirt_number = optional_int(player.get("ShirtNumber"), DflTrackingError)
-
-            player_index[person_id] = PlayerReference(
-                person_id=person_id,
-                team_id=team_id,
-                team=team,
-                shirt_number=shirt_number,
-            )
-
-    if not player_index:
-        raise DflTrackingError("No home or away players found in match metadata.")
-
-    return player_index
 
 
 def _parse_possession(
@@ -264,7 +147,10 @@ def _parse_player_frame(
     except ValueError as exc:
         raise DflTrackingError("Tracking frame number must be an integer.") from exc
 
-    timestamp = _parse_timestamp(require_attribute(frame, "T", DflTrackingError))
+    timestamp = parse_timestamp(
+        require_attribute(frame, "T", DflTrackingError),
+        DflTrackingError,
+    )
 
     return PlayerTrackingSample(
         frame_number=frame_number,
@@ -300,7 +186,10 @@ def _parse_ball_frame(
     except ValueError as exc:
         raise DflTrackingError("Tracking frame number must be an integer.") from exc
 
-    timestamp = _parse_timestamp(require_attribute(frame, "T", DflTrackingError))
+    timestamp = parse_timestamp(
+        require_attribute(frame, "T", DflTrackingError),
+        DflTrackingError,
+    )
 
     return BallTrackingSample(
         frame_number=frame_number,
@@ -337,7 +226,7 @@ def iter_tracking_samples(
     if not metadata_path.is_file():
         raise FileNotFoundError(f"Metadata file does not exist: {metadata_path}")
 
-    player_index = _load_player_index(metadata_path)
+    player_index = load_player_index(metadata_path)
 
     try:
         context = ET.iterparse(
