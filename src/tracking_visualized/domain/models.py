@@ -33,6 +33,18 @@ class CoordinateOrigin(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CoordinateSystem:
+    """Canonical football pitch coordinate system.
+
+    Coordinates are expressed in meters.
+
+    Origin:
+        Bottom-left corner of the pitch.
+
+    Axes:
+        x increases from left to right along pitch length.
+        y increases from bottom to top along pitch width.
+    """
+
     pitch_length: float
     pitch_width: float
     origin: CoordinateOrigin = CoordinateOrigin.BOTTOM_LEFT
