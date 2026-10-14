@@ -56,6 +56,8 @@ class MatchMetadata(BaseModel):
     match_day: int = Field(gt=0)
     home_team: TeamMetadata
     away_team: TeamMetadata
+    pitch_length: float = Field(gt=0)
+    pitch_width: float = Field(gt=0)
     periods: tuple[PeriodMetadata, PeriodMetadata]
 
     @model_validator(mode="after")
@@ -287,6 +289,27 @@ def load_match_metadata(path: Path) -> MatchMetadata:
         DflMatchMetadataError,
     )
 
+    environment = match_information.find("Environment")
+
+    if environment is not None:
+        pitch_length = float(
+            require_attribute(
+                environment,
+                "PitchX",
+                DflMatchMetadataError,
+            )
+        )
+        pitch_width = float(
+            require_attribute(
+                environment,
+                "PitchY",
+                DflMatchMetadataError,
+            )
+        )
+    else:
+        pitch_length = 105.0
+        pitch_width = 68.0
+
     home_team, away_team = _parse_teams(teams_element)
 
     _validate_team_consistency(
@@ -339,5 +362,7 @@ def load_match_metadata(path: Path) -> MatchMetadata:
         match_day=match_day,
         home_team=home_team,
         away_team=away_team,
+        pitch_length=pitch_length,
+        pitch_width=pitch_width,
         periods=_parse_periods(game_information),
     )
