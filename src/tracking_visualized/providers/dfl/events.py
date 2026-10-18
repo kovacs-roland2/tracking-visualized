@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
+from tracking_visualized.domain import PeriodType
 from tracking_visualized.providers.dfl.match_metadata import TeamSide
 from tracking_visualized.providers.dfl.shared import (
     PlayerReference,
@@ -40,6 +41,25 @@ SHOT_OUTCOMES = {
 class MatchPeriod(StrEnum):
     FIRST_HALF = "first_half"
     SECOND_HALF = "second_half"
+
+
+def to_domain_period(period: MatchPeriod) -> PeriodType:
+    """
+    Convert a DFL match period into the domain period enum.
+
+    Args:
+        period (MatchPeriod): The DFL match period to convert.
+
+    Returns:
+        PeriodType: The corresponding domain period type.
+    """
+    if period == MatchPeriod.FIRST_HALF:
+        return PeriodType.FIRST_HALF
+
+    if period == MatchPeriod.SECOND_HALF:
+        return PeriodType.SECOND_HALF
+
+    raise ValueError(f"Unsupported match period: {period}")
 
 
 @dataclass(frozen=True, slots=True)

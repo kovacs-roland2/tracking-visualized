@@ -22,6 +22,11 @@ from tracking_visualized.providers.dfl.match_metadata import (
     TeamSide,
     load_match_metadata,
 )
+from tracking_visualized.providers.dfl.timeline import (
+    NormalizedEventTime,
+    build_match_timeline,
+    normalize_shot_time,
+)
 from tracking_visualized.providers.dfl.tracking import (
     BallTrackingSample,
     DflTrackingError,
@@ -62,4 +67,7 @@ __all__ = [
     "is_on_pitch",
     "normalize_event_coordinates",
     "normalize_tracking_coordinates",
+    "build_match_timeline",
+    "normalize_shot_time",
+    "NormalizedEventTime",
 ]

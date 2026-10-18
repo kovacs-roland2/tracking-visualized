@@ -189,6 +189,13 @@ class BallPosition:
 
 @dataclass(frozen=True, slots=True)
 class Frame:
+    """One normalized tracking frame.
+
+    frame_index is zero-based and globally unique within
+    the match. Halftime is excluded from the frame timeline.
+    Missing source frames leave gaps in frame_index.
+    """
+
     frame_index: int
     time: MatchTime
 
