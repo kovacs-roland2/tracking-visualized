@@ -6,7 +6,10 @@ from tracking_visualized.normalization.time import (
     MatchTimeline,
     SourceFrameTime,
 )
-from tracking_visualized.providers.dfl.events import ShotEvent
+from tracking_visualized.providers.dfl.events import (
+    ShotEvent,
+    to_domain_period,
+)
 from tracking_visualized.providers.dfl.tracking import (
     BallTrackingSample,
     TrackingPeriod,
@@ -84,7 +87,7 @@ def normalize_shot_time(
     shot: ShotEvent,
     timeline: MatchTimeline,
 ) -> NormalizedEventTime:
-    period = PeriodType(shot.period.value)
+    period = to_domain_period(shot.period)
 
     # Best option: Sportec already calculated the corresponding
     # tracking frame.
