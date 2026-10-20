@@ -11,6 +11,13 @@ from tracking_visualized.processing.sequences import (
     extract_sequence,
     extract_sequence_by_id,
 )
+from tracking_visualized.processing.synchronization import (
+    EventSynchronization,
+    EventSynchronizationError,
+    SynchronizationMethod,
+    SynchronizationReport,
+    synchronize_match_events,
+)
 
 __all__ = [
     "EventCatalog",
@@ -22,4 +29,9 @@ __all__ = [
     "SequenceExtractionError",
     "extract_sequence",
     "extract_sequence_by_id",
+    "EventSynchronization",
+    "EventSynchronizationError",
+    "SynchronizationMethod",
+    "SynchronizationReport",
+    "synchronize_match_events",
 ]
