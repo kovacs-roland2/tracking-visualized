@@ -77,6 +77,14 @@ class SequenceConfig(BaseModel):
     )
 
 
+class SynchronizationConfig(BaseModel):
+    max_event_frame_difference_seconds: float = Field(
+        default=0.1,
+        ge=0,
+        le=1,
+    )
+
+
 class AppConfig(BaseModel):
     """Application-wide configuration."""
 
@@ -84,6 +92,7 @@ class AppConfig(BaseModel):
     rendering: RenderingConfig = Field(default_factory=RenderingConfig)
     video: VideoConfig = Field(default_factory=VideoConfig)
     sequence: SequenceConfig = Field(default_factory=SequenceConfig)
+    synchronization: SynchronizationConfig = Field(default_factory=SynchronizationConfig)
 
 
 __all__ = [
