@@ -11,6 +11,13 @@ from tracking_visualized.processing.incomplete_tracking import (
     TrackingRepairReport,
     repair_sequence_tracking,
 )
+from tracking_visualized.processing.selection import (
+    SelectedSequence,
+    SequenceSelectionError,
+    TimeRangeSequence,
+    select_event_sequence,
+    select_time_range,
+)
 from tracking_visualized.processing.sequences import (
     EventSequence,
     SequenceExtractionError,
@@ -44,4 +51,9 @@ __all__ = [
     "TrackingGapPolicy",
     "TrackingRepairReport",
     "repair_sequence_tracking",
+    "SelectedSequence",
+    "SequenceSelectionError",
+    "TimeRangeSequence",
+    "select_event_sequence",
+    "select_time_range",
 ]
