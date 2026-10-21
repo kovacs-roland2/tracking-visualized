@@ -85,6 +85,20 @@ class SynchronizationConfig(BaseModel):
     )
 
 
+class TrackingRepairConfig(BaseModel):
+    max_player_gap_seconds: float = Field(
+        default=0.2,
+        ge=0,
+        le=2,
+    )
+
+    max_ball_gap_seconds: float = Field(
+        default=0.2,
+        ge=0,
+        le=2,
+    )
+
+
 class AppConfig(BaseModel):
     """Application-wide configuration."""
 
@@ -93,6 +107,7 @@ class AppConfig(BaseModel):
     video: VideoConfig = Field(default_factory=VideoConfig)
     sequence: SequenceConfig = Field(default_factory=SequenceConfig)
     synchronization: SynchronizationConfig = Field(default_factory=SynchronizationConfig)
+    tracking_repair: TrackingRepairConfig = Field(default_factory=TrackingRepairConfig)
 
 
 __all__ = [
@@ -100,5 +115,7 @@ __all__ = [
     "PathConfig",
     "RenderingConfig",
     "SequenceConfig",
+    "SynchronizationConfig",
+    "TrackingRepairConfig",
     "VideoConfig",
 ]

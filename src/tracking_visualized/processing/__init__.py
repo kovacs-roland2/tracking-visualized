@@ -5,6 +5,12 @@ from tracking_visualized.processing.events import (
     filter_shot_events,
     sort_events,
 )
+from tracking_visualized.processing.incomplete_tracking import (
+    IncompleteTrackingError,
+    TrackingGapPolicy,
+    TrackingRepairReport,
+    repair_sequence_tracking,
+)
 from tracking_visualized.processing.sequences import (
     EventSequence,
     SequenceExtractionError,
@@ -34,4 +40,8 @@ __all__ = [
     "SynchronizationMethod",
     "SynchronizationReport",
     "synchronize_match_events",
+    "IncompleteTrackingError",
+    "TrackingGapPolicy",
+    "TrackingRepairReport",
+    "repair_sequence_tracking",
 ]
