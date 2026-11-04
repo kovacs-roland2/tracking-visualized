@@ -113,8 +113,8 @@ class PitchStyle:
         if self.spot_radius <= 0:
             raise ValueError("spot_radius must be positive.")
 
-        if self.padding < 0:
-            raise ValueError("padding must not be negative.")
+        if not isfinite(self.padding) or self.padding < 0:
+            raise ValueError("padding must be a non-negative finite number.")
 
 
 def _line_kwargs(style: PitchStyle) -> dict:
