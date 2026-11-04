@@ -65,8 +65,8 @@ class PitchDimensions:
         if self.penalty_spot_distance >= self.penalty_area_depth:
             raise PitchDimensionsError("Penalty spot must lie inside the penalty area.")
 
-        if self.center_circle_radius * 2 >= self.width:
-            raise PitchDimensionsError("Center circle must fit inside the pitch width.")
+        if self.center_circle_radius * 2 >= min(self.length, self.width):
+            raise PitchDimensionsError("Center circle must fit inside the pitch.")
 
     @property
     def center(self) -> tuple[float, float]:
