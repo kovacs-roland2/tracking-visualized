@@ -124,6 +124,16 @@ def _parse_ball_status(
     raise DflTrackingError(f"Unknown BallStatus value '{value}'.")
 
 
+def _parse_frame_number(frame: ET.Element) -> int:
+    """Read the integer frame number (attribute ``N``) of a tracking frame."""
+    value = require_attribute(frame, "N", DflTrackingError)
+
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise DflTrackingError("Tracking frame number must be an integer.") from exc
+
+
 def _parse_player_frame(
     frame: ET.Element,
     period: TrackingPeriod,
@@ -140,12 +150,7 @@ def _parse_player_frame(
     Returns:
         A PlayerTrackingSample object containing the parsed tracking data.
     """
-    try:
-        frame_number = int(require_attribute(frame, "N", DflTrackingError))
-    except DflTrackingError:
-        raise
-    except ValueError as exc:
-        raise DflTrackingError("Tracking frame number must be an integer.") from exc
+    frame_number = _parse_frame_number(frame)
 
     timestamp = parse_timestamp(
         require_attribute(frame, "T", DflTrackingError),
@@ -179,12 +184,7 @@ def _parse_ball_frame(
     Returns:
         A BallTrackingSample object containing the parsed tracking data.
     """
-    try:
-        frame_number = int(require_attribute(frame, "N", DflTrackingError))
-    except DflTrackingError:
-        raise
-    except ValueError as exc:
-        raise DflTrackingError("Tracking frame number must be an integer.") from exc
+    frame_number = _parse_frame_number(frame)
 
     timestamp = parse_timestamp(
         require_attribute(frame, "T", DflTrackingError),
