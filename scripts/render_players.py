@@ -281,7 +281,6 @@ def main() -> None:
             players,
             team_styles,
             duration_seconds=args.trail_seconds,
-            fps=FPS,
             line_width=config.player_marker_size * 0.3,
         ),
         PlayerLayer(ax, players, team_styles, marker_size=config.player_marker_size * 1.6),

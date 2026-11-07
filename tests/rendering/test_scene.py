@@ -138,7 +138,7 @@ def test_scene_uses_rendering_config_sizes():
 
     assert players.markers["home"].get_sizes()[0] == 144.0
     assert ball.marker.get_sizes()[0] == 36.0
-    assert trails.window_frames == round(config.trail_duration_seconds * config.fps)
+    assert trails.duration_seconds == config.trail_duration_seconds
 
 
 def test_create_animator_uses_config_fps_by_default():
