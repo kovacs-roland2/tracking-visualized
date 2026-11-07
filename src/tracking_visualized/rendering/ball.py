@@ -4,9 +4,9 @@ import numpy as np
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection
-from matplotlib.colors import is_color_like
 
 from tracking_visualized.domain import BallPosition, Frame
+from tracking_visualized.rendering._validation import validate_colors
 from tracking_visualized.rendering.pitch import PitchDimensions
 
 DEFAULT_OUT_OF_BOUNDS_MARGIN = 5.0
@@ -21,12 +21,7 @@ class BallStyle:
     edge_width: float = 1.0
 
     def __post_init__(self) -> None:
-        for name, value in (
-            ("marker_color", self.marker_color),
-            ("edge_color", self.edge_color),
-        ):
-            if not is_color_like(value):
-                raise ValueError(f"{name} is not a valid color: {value!r}.")
+        validate_colors(self, ("marker_color", "edge_color"))
 
         if self.edge_width < 0:
             raise ValueError("edge_width must not be negative.")
