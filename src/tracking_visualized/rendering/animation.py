@@ -61,10 +61,17 @@ class AnimationSettings:
             raise ValueError("speed must be a positive finite number.")
 
     @classmethod
-    def from_rendering_config(cls, config: RenderingConfig, **kwargs) -> "AnimationSettings":
+    def from_rendering_config(
+        cls,
+        config: RenderingConfig,
+        *,
+        speed: float = 1.0,
+        repeat: bool = False,
+        blit: bool = False,
+    ) -> "AnimationSettings":
         """Create settings using the frame rate from ``RenderingConfig``."""
 
-        return cls(fps=config.fps, **kwargs)
+        return cls(fps=config.fps, speed=speed, repeat=repeat, blit=blit)
 
     @property
     def interval_ms(self) -> float:
