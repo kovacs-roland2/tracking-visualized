@@ -7,7 +7,11 @@ from matplotlib.collections import PathCollection
 from matplotlib.text import Text
 
 from tracking_visualized.domain import Frame, Match, Player
-from tracking_visualized.rendering.teams import TeamStyle, resolve_team_styles
+from tracking_visualized.rendering.teams import (
+    TeamStyle,
+    resolve_team_styles,
+    validate_team_styles,
+)
 
 NUMBER_FONT_SCALE = 0.55
 NUMBER_ZORDER_OFFSET = 0.1
@@ -35,11 +39,7 @@ class PlayerLayer:
         if marker_size <= 0:
             raise ValueError("marker_size must be positive.")
 
-        for player in players:
-            if player.team_id not in team_styles:
-                raise ValueError(
-                    f"No style for team '{player.team_id}' of player '{player.player_id}'."
-                )
+        validate_team_styles(players, team_styles)
 
         self._players = {player.player_id: player for player in players}
         self._team_ids = tuple(dict.fromkeys(player.team_id for player in players))
