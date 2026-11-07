@@ -1,4 +1,10 @@
-from pathlib import Path
+from sample_data import (
+    EVENTS_FILE,
+    MATCH_ID,
+    METADATA_FILE,
+    TRACKING_FILE,
+    require_file,
+)
 
 from tracking_visualized.providers.dfl import (
     BallTrackingSample,
@@ -7,21 +13,6 @@ from tracking_visualized.providers.dfl import (
     load_shot_events,
     normalize_shot_time,
 )
-
-MATCH_ID = "J03WMX"
-
-BASE_DIR = Path("data/raw/dfl") / MATCH_ID
-
-TRACKING_FILE = BASE_DIR / ("DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-J03WMX.xml")
-
-METADATA_FILE = BASE_DIR / ("DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-J03WMX.xml")
-
-EVENTS_FILE = BASE_DIR / ("DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-J03WMX.xml")
-
-
-def require_file(path: Path) -> None:
-    if not path.is_file():
-        raise FileNotFoundError(f"Required dataset file does not exist: {path}")
 
 
 def load_ball_samples() -> list[BallTrackingSample]:

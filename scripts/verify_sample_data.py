@@ -1,27 +1,10 @@
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
-MATCH_ID = "J03WMX"
-
-DATA_DIR = Path("data/raw/dfl") / MATCH_ID
-
-MATCH_INFO_FILE = DATA_DIR / "DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-J03WMX.xml"
-
-EVENTS_FILE = DATA_DIR / "DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-J03WMX.xml"
-
-POSITIONS_FILE = DATA_DIR / "DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-J03WMX.xml"
-
-
-def require_file(path: Path) -> None:
-    if not path.is_file():
-        raise FileNotFoundError(f"Missing required dataset file: {path}")
-
-    if path.stat().st_size == 0:
-        raise ValueError(f"Dataset file is empty: {path}")
+from sample_data import EVENTS_FILE, METADATA_FILE, TRACKING_FILE, require_file
 
 
 def verify_match_information() -> None:
-    tree = ET.parse(MATCH_INFO_FILE)
+    tree = ET.parse(METADATA_FILE)
     root = tree.getroot()
 
     general = root.find(".//General")
@@ -59,7 +42,7 @@ def verify_events() -> None:
 
 
 def main() -> None:
-    for path in (MATCH_INFO_FILE, EVENTS_FILE, POSITIONS_FILE):
+    for path in (METADATA_FILE, EVENTS_FILE, TRACKING_FILE):
         require_file(path)
         print(f"OK: {path} ({path.stat().st_size:,} bytes)")
 
