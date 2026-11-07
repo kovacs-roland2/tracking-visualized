@@ -20,6 +20,46 @@ class PlayerReference:
     shirt_number: int | None = None
 
 
+def _load_team_layout(metadata_path: Path) -> tuple[ET.Element, str, str]:
+    """
+    Parse the match metadata XML and locate its teams.
+
+    Args:
+        metadata_path: The path to the match metadata XML file.
+
+    Returns:
+        The <Teams> element, the home team ID and the away team ID.
+    """
+    from tracking_visualized.providers.dfl.tracking import DflTrackingError
+
+    try:
+        tree = ET.parse(metadata_path)
+    except ET.ParseError as exc:
+        raise DflTrackingError(f"Invalid match metadata XML: {metadata_path}") from exc
+
+    match_information = tree.getroot().find("MatchInformation")
+
+    if match_information is None:
+        raise DflTrackingError("Missing <MatchInformation> element.")
+
+    general = match_information.find("General")
+    teams = match_information.find("Teams")
+
+    if general is None:
+        raise DflTrackingError("Missing <General> element.")
+
+    if teams is None:
+        raise DflTrackingError("Missing <Teams> element.")
+
+    home_team_id = require_attribute(general, "HomeTeamId", DflTrackingError)
+    away_team_id = general.get("GuestTeamId") or general.get("AwayTeamId")
+
+    if not away_team_id:
+        raise DflTrackingError("Missing away/guest team ID.")
+
+    return teams, home_team_id, away_team_id
+
+
 def load_team_side_index(
     metadata_path: Path,
 ) -> dict[str, TeamSide]:
@@ -34,37 +74,7 @@ def load_team_side_index(
     """
     from tracking_visualized.providers.dfl.tracking import DflTrackingError
 
-    try:
-        tree = ET.parse(metadata_path)
-    except ET.ParseError as exc:
-        raise DflTrackingError(f"Invalid match metadata XML: {metadata_path}") from exc
-
-    root = tree.getroot()
-
-    match_information = root.find("MatchInformation")
-
-    if match_information is None:
-        raise DflTrackingError("Missing <MatchInformation> element.")
-
-    general = match_information.find("General")
-    teams = match_information.find("Teams")
-
-    if general is None:
-        raise DflTrackingError("Missing <General> element.")
-
-    if teams is None:
-        raise DflTrackingError("Missing <Teams> element.")
-
-    home_team_id = require_attribute(
-        general,
-        "HomeTeamId",
-        DflTrackingError,
-    )
-
-    away_team_id = general.get("GuestTeamId") or general.get("AwayTeamId")
-
-    if not away_team_id:
-        raise DflTrackingError("Missing away/guest team ID.")
+    teams, home_team_id, away_team_id = _load_team_layout(metadata_path)
 
     team_sides: dict[str, TeamSide] = {}
 
@@ -100,37 +110,7 @@ def load_player_index(
     """
     from tracking_visualized.providers.dfl.tracking import DflTrackingError, TrackingTeam
 
-    try:
-        tree = ET.parse(metadata_path)
-    except ET.ParseError as exc:
-        raise DflTrackingError(f"Invalid match metadata XML: {metadata_path}") from exc
-
-    root = tree.getroot()
-
-    match_information = root.find("MatchInformation")
-
-    if match_information is None:
-        raise DflTrackingError("Missing <MatchInformation> element.")
-
-    general = match_information.find("General")
-    teams = match_information.find("Teams")
-
-    if general is None:
-        raise DflTrackingError("Missing <General> element.")
-
-    if teams is None:
-        raise DflTrackingError("Missing <Teams> element.")
-
-    home_team_id = require_attribute(
-        general,
-        "HomeTeamId",
-        DflTrackingError,
-    )
-
-    away_team_id = general.get("GuestTeamId") or general.get("AwayTeamId")
-
-    if not away_team_id:
-        raise DflTrackingError("Missing away/guest team ID.")
+    teams, home_team_id, away_team_id = _load_team_layout(metadata_path)
 
     player_index: dict[str, PlayerReference] = {}
 
