@@ -19,6 +19,7 @@ from tracking_visualized.rendering.teams import (
     TeamStyle,
     resolve_team_styles,
 )
+from tracking_visualized.rendering.trails import TrailLayer
 
 __all__ = [
     "DEFAULT_AWAY_STYLE",
@@ -30,6 +31,7 @@ __all__ = [
     "PitchStyle",
     "PlayerLayer",
     "TeamStyle",
+    "TrailLayer",
     "draw_ball",
     "draw_pitch",
     "draw_players",

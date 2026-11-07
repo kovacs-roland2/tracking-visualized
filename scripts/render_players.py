@@ -1,7 +1,8 @@
-"""Render one tracking frame (players and ball) of the sample match to output/players.png.
+"""Render one tracking frame (players, ball and movement trails) of the sample match
+to output/players.png.
 
 Scans the whole tracking file twice (once to find the first-half origin frame,
-once to collect positions), so it takes about a minute on the full match.
+once to collect positions for the trail window), so it takes about a minute on the full match.
 """
 
 import argparse
@@ -37,6 +38,7 @@ from tracking_visualized.providers.dfl import (  # noqa: E402
 from tracking_visualized.providers.dfl.shared import load_player_index  # noqa: E402
 from tracking_visualized.rendering import (  # noqa: E402
     PitchDimensions,
+    TrailLayer,
     draw_ball,
     draw_pitch,
     draw_players,
@@ -59,6 +61,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=60.0,
         help="Seconds after the first-half kick-off frame to render (default: 60).",
+    )
+    parser.add_argument(
+        "--trail-seconds",
+        type=float,
+        default=RenderingConfig().trail_duration_seconds,
+        help="Length of the player movement trails in seconds (default: from RenderingConfig).",
     )
     return parser.parse_args()
 
@@ -85,25 +93,31 @@ def find_first_half_origin() -> int | None:
 
 
 def collect_frame_samples(
-    target_frame: int, coordinate_system: CoordinateSystem
-) -> tuple[list[PlayerPosition], BallPosition | None]:
-    """Collect player and ball positions recorded at ``target_frame`` in the first half."""
+    first_frame: int, last_frame: int, coordinate_system: CoordinateSystem
+) -> dict[int, tuple[list[PlayerPosition], BallPosition | None]]:
+    """Collect player and ball positions for first-half frames in ``first_frame..last_frame``."""
 
-    positions: list[PlayerPosition] = []
-    ball: BallPosition | None = None
+    frames: dict[int, tuple[list[PlayerPosition], BallPosition | None]] = {}
 
     for sample in iter_tracking_samples(TRACKING_FILE, METADATA_FILE):
-        if sample.period != TrackingPeriod.FIRST_HALF or sample.frame_number != target_frame:
+        if sample.period != TrackingPeriod.FIRST_HALF:
             continue
 
+        if not first_frame <= sample.frame_number <= last_frame:
+            continue
+
+        positions, ball = frames.setdefault(sample.frame_number, ([], None))
         x, y = normalize_tracking_coordinates(sample.x, sample.y, coordinate_system)
 
         if isinstance(sample, PlayerTrackingSample):
             positions.append(PlayerPosition(sample.person_id, x, y))
         elif isinstance(sample, BallTrackingSample):
-            ball = BallPosition(x=x, y=y, z=sample.z, is_in_play=sample.is_alive)
+            frames[sample.frame_number] = (
+                positions,
+                BallPosition(x=x, y=y, z=sample.z, is_in_play=sample.is_alive),
+            )
 
-    return positions, ball
+    return frames
 
 
 def main() -> None:
@@ -127,33 +141,56 @@ def main() -> None:
         raise SystemExit("No first-half tracking samples found.")
 
     target_frame = origin_frame + round(args.seconds * FPS)
-    positions, ball = collect_frame_samples(target_frame, coordinate_system)
+    trail_frames = round(args.trail_seconds * FPS)
+    first_frame = max(origin_frame, target_frame - trail_frames)
 
-    if not positions:
+    samples = collect_frame_samples(first_frame, target_frame, coordinate_system)
+
+    if target_frame not in samples or not samples[target_frame][0]:
         raise SystemExit(f"No player positions found at frame {target_frame}.")
 
-    frame = Frame(
-        frame_index=target_frame,
-        time=MatchTime(PeriodType.FIRST_HALF, args.seconds),
-        player_positions=tuple(positions),
-        ball_position=ball,
-    )
+    frames = [
+        Frame(
+            frame_index=frame_number,
+            time=MatchTime(PeriodType.FIRST_HALF, (frame_number - origin_frame) / FPS),
+            player_positions=tuple(positions),
+            ball_position=ball,
+        )
+        for frame_number, (positions, ball) in sorted(samples.items())
+    ]
+    frame = frames[-1]
+
+    pitch = PitchDimensions.from_coordinate_system(coordinate_system)
+    config = RenderingConfig()
+    team_styles = resolve_team_styles(teams)
 
     fig, ax = plt.subplots(figsize=(10.5, 6.8))
-    draw_pitch(ax, PitchDimensions.from_coordinate_system(coordinate_system))
-    config = RenderingConfig()
+    draw_pitch(ax, pitch)
+
+    trails = TrailLayer(
+        ax,
+        players,
+        team_styles,
+        duration_seconds=args.trail_seconds,
+        fps=FPS,
+        line_width=config.player_marker_size * 0.3,
+    )
+
+    for trail_frame in frames:
+        trails.update(trail_frame)
+
     layer = draw_players(
         ax,
         frame,
         players,
-        resolve_team_styles(teams),
+        team_styles,
         marker_size=config.player_marker_size * 1.6,
     )
     ball_layer = draw_ball(
         ax,
         frame,
         marker_size=config.ball_marker_size * 1.6,
-        pitch=PitchDimensions.from_coordinate_system(coordinate_system),
+        pitch=pitch,
     )
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -161,6 +198,7 @@ def main() -> None:
 
     print(f"Rendered {len(layer.visible_player_ids)} players at frame {target_frame}.")
     print(f"Ball {'shown' if ball_layer.is_visible else 'not shown'} at frame {target_frame}.")
+    print(f"Drew trails from {len(frames)} frames ({args.trail_seconds:g} s).")
     print(f"Saved player preview to {OUTPUT_FILE}")
 
 
