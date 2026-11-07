@@ -204,6 +204,34 @@ class _FrameLookup:
         )
 
 
+def _matched(
+    event: Event,
+    frame: Frame,
+    method: SynchronizationMethod,
+    note: str | None = None,
+) -> tuple[Event, EventSynchronization]:
+    """Snap ``event`` onto ``frame`` and describe how it was matched."""
+    synchronized = replace(
+        event,
+        time=frame.time,
+        frame_index=frame.frame_index,
+    )
+
+    return (
+        synchronized,
+        EventSynchronization(
+            event_id=event.event_id,
+            method=method,
+            original_frame_index=event.frame_index,
+            synchronized_frame_index=frame.frame_index,
+            original_seconds=event.time.seconds,
+            synchronized_seconds=frame.time.seconds,
+            time_difference_seconds=frame.time.seconds - event.time.seconds,
+            note=note,
+        ),
+    )
+
+
 def _synchronize_event(
     event: Event,
     lookup: _FrameLookup,
@@ -225,30 +253,11 @@ def _synchronize_event(
 
     # Highest priority:
     # an existing validated frame reference.
-    if event.frame_index is not None:
-        frame = lookup.by_index.get(event.frame_index)
+    if original_frame_index is not None:
+        frame = lookup.by_index.get(original_frame_index)
 
         if frame is not None and frame.time.period == event.time.period:
-            difference = frame.time.seconds - event.time.seconds
-
-            synchronized = replace(
-                event,
-                time=frame.time,
-                frame_index=frame.frame_index,
-            )
-
-            return (
-                synchronized,
-                EventSynchronization(
-                    event_id=event.event_id,
-                    method=SynchronizationMethod.EXISTING_FRAME,
-                    original_frame_index=original_frame_index,
-                    synchronized_frame_index=frame.frame_index,
-                    original_seconds=event.time.seconds,
-                    synchronized_seconds=frame.time.seconds,
-                    time_difference_seconds=difference,
-                ),
-            )
+            return _matched(event, frame, SynchronizationMethod.EXISTING_FRAME)
 
     # Fallback:
     # nearest observed tracking timestamp.
@@ -257,56 +266,30 @@ def _synchronize_event(
         event.time.seconds,
     )
 
-    if frame is not None:
-        difference = frame.time.seconds - event.time.seconds
+    if frame is not None and _frame_time_delta(frame, event.time.seconds) <= (
+        max_time_difference_seconds
+    ):
+        note = None
 
-        if _frame_time_delta(frame, event.time.seconds) <= max_time_difference_seconds:
-            synchronized = replace(
-                event,
-                time=frame.time,
-                frame_index=frame.frame_index,
+        if original_frame_index is not None:
+            note = (
+                f"Original frame {original_frame_index} was unusable; matched by timestamp instead."
             )
 
-            note = None
-
-            if original_frame_index is not None:
-                note = (
-                    f"Original frame "
-                    f"{original_frame_index} was unusable; "
-                    "matched by timestamp instead."
-                )
-
-            return (
-                synchronized,
-                EventSynchronization(
-                    event_id=event.event_id,
-                    method=SynchronizationMethod.NEAREST_TIMESTAMP,
-                    original_frame_index=original_frame_index,
-                    synchronized_frame_index=frame.frame_index,
-                    original_seconds=event.time.seconds,
-                    synchronized_seconds=frame.time.seconds,
-                    time_difference_seconds=difference,
-                    note=note,
-                ),
-            )
+        return _matched(event, frame, SynchronizationMethod.NEAREST_TIMESTAMP, note)
 
     # No safe match.
-    synchronized = replace(
-        event,
-        frame_index=None,
-    )
-
     return (
-        synchronized,
+        replace(event, frame_index=None),
         EventSynchronization(
             event_id=event.event_id,
             method=SynchronizationMethod.UNMATCHED,
-            original_frame_index=(original_frame_index),
+            original_frame_index=original_frame_index,
             synchronized_frame_index=None,
-            original_seconds=(event.time.seconds),
+            original_seconds=event.time.seconds,
             synchronized_seconds=None,
             time_difference_seconds=None,
-            note=(f"No tracking frame found within {max_time_difference_seconds:.3f}s."),
+            note=f"No tracking frame found within {max_time_difference_seconds:.3f}s.",
         ),
     )
 
