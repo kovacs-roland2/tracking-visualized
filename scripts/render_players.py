@@ -1,5 +1,5 @@
-"""Render one tracking frame (players, ball and movement trails) of the sample match
-to output/players.png.
+"""Render one tracking frame (players, ball, movement trails and optionally a
+selected shot/goal event) of the sample match to output/players.png.
 
 Scans the whole tracking file twice (once to find the first-half origin frame,
 once to collect positions for the trail window), so it takes about a minute on the full match.
@@ -18,21 +18,26 @@ from tracking_visualized.config import RenderingConfig  # noqa: E402
 from tracking_visualized.domain import (  # noqa: E402
     BallPosition,
     CoordinateSystem,
+    Event,
+    EventType,
     Frame,
     MatchTime,
     PeriodType,
     Player,
     PlayerPosition,
+    ShotOutcome,
     Team,
     TeamSide,
 )
 from tracking_visualized.providers.dfl import (  # noqa: E402
     BallTrackingSample,
     PlayerTrackingSample,
+    ShotEvent,
     TrackingPeriod,
     create_coordinate_system,
     iter_tracking_samples,
     load_match_metadata,
+    load_shot_events,
     normalize_tracking_coordinates,
 )
 from tracking_visualized.providers.dfl.shared import load_player_index  # noqa: E402
@@ -40,6 +45,7 @@ from tracking_visualized.rendering import (  # noqa: E402
     PitchDimensions,
     TrailLayer,
     draw_ball,
+    draw_event,
     draw_pitch,
     draw_players,
     resolve_team_styles,
@@ -49,6 +55,7 @@ MATCH_ID = "J03WMX"
 BASE_DIR = Path("data/raw/dfl") / MATCH_ID
 TRACKING_FILE = BASE_DIR / ("DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-J03WMX.xml")
 METADATA_FILE = BASE_DIR / ("DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-J03WMX.xml")
+EVENTS_FILE = BASE_DIR / ("DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-J03WMX.xml")
 OUTPUT_FILE = Path("output") / "players.png"
 
 FPS = 25
@@ -60,13 +67,28 @@ def parse_args() -> argparse.Namespace:
         "--seconds",
         type=float,
         default=60.0,
-        help="Seconds after the first-half kick-off frame to render (default: 60).",
+        help="With --event none: seconds after first-half kick-off to render (default: 60).",
     )
     parser.add_argument(
         "--trail-seconds",
         type=float,
         default=RenderingConfig().trail_duration_seconds,
         help="Length of the player movement trails in seconds (default: from RenderingConfig).",
+    )
+    parser.add_argument(
+        "--event",
+        default="first-goal",
+        help=(
+            "First-half shot to highlight: an event ID or 'first-goal', or 'none' to render "
+            "the frame at --seconds without an event (default: first-goal). "
+            "The rendered frame is taken relative to the event instead of --seconds."
+        ),
+    )
+    parser.add_argument(
+        "--after-event-seconds",
+        type=float,
+        default=0.5,
+        help="With --event: seconds after the event to render (default: 0.5).",
     )
     return parser.parse_args()
 
@@ -120,6 +142,54 @@ def collect_frame_samples(
     return frames
 
 
+def select_shot(event_arg: str) -> ShotEvent:
+    """Pick a first-half shot by event ID, or the first first-half goal."""
+
+    shots = [
+        shot
+        for shot in load_shot_events(EVENTS_FILE, METADATA_FILE)
+        if shot.period.name == "FIRST_HALF"
+    ]
+
+    if event_arg == "first-goal":
+        goals = [shot for shot in shots if shot.is_goal]
+
+        if not goals:
+            raise SystemExit("No first-half goal found.")
+
+        return goals[0]
+
+    for shot in shots:
+        if shot.event_id == event_arg:
+            return shot
+
+    ids = ", ".join(shot.event_id for shot in shots)
+
+    raise SystemExit(f"No first-half shot with ID '{event_arg}'. Available: {ids}")
+
+
+def build_event(
+    shot: ShotEvent,
+    event_frame: int,
+    origin_frame: int,
+) -> Event:
+    return Event(
+        event_id=shot.event_id,
+        event_type=EventType.SHOT,
+        time=MatchTime(PeriodType.FIRST_HALF, (event_frame - origin_frame) / FPS),
+        team_id=shot.team_id,
+        player_id=shot.player_id,
+        # DFL event coordinates already share the pitch frame of normalized tracking
+        # coordinates (checked against the shooter's tracked position for every
+        # first-half shot). normalize_event_coordinates would mirror y, so it is not used.
+        x=shot.x,
+        y=shot.y,
+        frame_index=event_frame,
+        shot_outcome=ShotOutcome(shot.outcome.value),
+        xg=shot.xg,
+    )
+
+
 def main() -> None:
     args = parse_args()
 
@@ -140,7 +210,20 @@ def main() -> None:
     if origin_frame is None:
         raise SystemExit("No first-half tracking samples found.")
 
-    target_frame = origin_frame + round(args.seconds * FPS)
+    shot = select_shot(args.event) if args.event.lower() != "none" else None
+    event: Event | None = None
+
+    if shot is not None:
+        event_frame = (
+            shot.calculated_frame
+            if shot.calculated_frame is not None
+            else origin_frame + round(shot.period_seconds * FPS)
+        )
+        event = build_event(shot, event_frame, origin_frame)
+        target_frame = event_frame + round(args.after_event_seconds * FPS)
+    else:
+        target_frame = origin_frame + round(args.seconds * FPS)
+
     trail_frames = round(args.trail_seconds * FPS)
     first_frame = max(origin_frame, target_frame - trail_frames)
 
@@ -192,6 +275,17 @@ def main() -> None:
         marker_size=config.ball_marker_size * 1.6,
         pitch=pitch,
     )
+
+    if event is not None and shot is not None:
+        event_layer = draw_event(
+            ax,
+            event,
+            frame,
+            shirt_number=shot.shirt_number,
+            marker_size=config.player_marker_size * 2.4,
+        )
+        visible = event_layer.is_visible
+        print(f"Event '{event.event_id}': {event_layer.label_text} (visible: {visible}).")
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUTPUT_FILE, dpi=150, bbox_inches="tight")

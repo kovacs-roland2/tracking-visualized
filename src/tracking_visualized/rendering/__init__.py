@@ -3,6 +3,13 @@ from tracking_visualized.rendering.ball import (
     BallStyle,
     draw_ball,
 )
+from tracking_visualized.rendering.events import (
+    EventLayer,
+    EventStyle,
+    draw_event,
+    format_event_time,
+    format_event_type,
+)
 from tracking_visualized.rendering.pitch import (
     PitchDimensions,
     PitchDimensionsError,
@@ -26,6 +33,8 @@ __all__ = [
     "DEFAULT_HOME_STYLE",
     "BallLayer",
     "BallStyle",
+    "EventLayer",
+    "EventStyle",
     "PitchDimensions",
     "PitchDimensionsError",
     "PitchStyle",
@@ -33,7 +42,10 @@ __all__ = [
     "TeamStyle",
     "TrailLayer",
     "draw_ball",
+    "draw_event",
     "draw_pitch",
     "draw_players",
+    "format_event_time",
+    "format_event_type",
     "resolve_team_styles",
 ]
