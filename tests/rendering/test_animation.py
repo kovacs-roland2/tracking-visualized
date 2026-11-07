@@ -318,6 +318,23 @@ def test_animation_drives_real_layers():
     assert len(trails.lines["home"].get_segments()) > 0
 
 
+def test_downsampled_animation_feeds_intervening_frames_to_trails():
+    fig, ax = plt.subplots()
+    draw_pitch(ax)
+    team = Team(team_id="home", name="Home", side=TeamSide.HOME)
+    player = Player(player_id="h1", team_id="home", shirt_number=1)
+    trails = TrailLayer(ax, (player,), resolve_team_styles((team,)))
+    frames = tracking_frames(51)
+    animator = SequenceAnimator(fig, frames, [trails], AnimationSettings(fps=1))
+
+    assert [scheduled.frame.frame_index for scheduled in animator.schedule] == [0, 25, 50]
+
+    for index in range(animator.frame_count):
+        animator.render_frame(index)
+
+    assert len(trails.lines["home"].get_segments()) == 50
+
+
 def test_trails_reset_when_animation_loops():
     fig, ax = plt.subplots()
     draw_pitch(ax)

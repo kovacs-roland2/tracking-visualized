@@ -147,6 +147,14 @@ class TrailLayer:
             All artists of the layer, as expected by Matplotlib's FuncAnimation.
         """
 
+        self.update_history(frame)
+        self._redraw(frame.frame_index)
+
+        return self.artists
+
+    def update_history(self, frame: Frame) -> None:
+        """Advance trail history without redrawing the current artists."""
+
         index = frame.frame_index
         period = frame.time.period
 
@@ -162,9 +170,6 @@ class TrailLayer:
         self._last_frame_index = index
         self._last_period = period
         self._prune(index)
-        self._redraw(index)
-
-        return self.artists
 
     def _record(self, frame: Frame) -> None:
         """Record the positions of all observed players in the current frame."""

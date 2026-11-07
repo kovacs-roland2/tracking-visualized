@@ -2,7 +2,7 @@ from bisect import bisect_left
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from math import floor, isfinite
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from matplotlib.animation import FuncAnimation
 from matplotlib.artist import Artist
@@ -28,6 +28,13 @@ class FrameLayer(Protocol):
     """
 
     def update(self, frame: Frame) -> Iterable[Artist]: ...
+
+
+@runtime_checkable
+class HistoryFrameLayer(Protocol):
+    """Optional layer interface for advancing history without drawing."""
+
+    def update_history(self, frame: Frame) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +173,8 @@ class SequenceAnimator:
 
     The animator knows nothing about players, balls or events. It builds a
     timestamp-synchronized schedule and calls ``update(frame)`` on every layer
-    for each output frame.
+    for each output frame. History-aware layers also receive skipped source
+    frames through ``update_history`` before the scheduled frame is drawn.
 
     Layers that keep history (such as TrailLayer) reset themselves when the
     animation loops back to the start, because frame indices go backwards.
@@ -184,8 +192,16 @@ class SequenceAnimator:
     ) -> None:
         self.fig = fig
         self.layers = tuple(layers)
+        self._history_layers = tuple(
+            layer for layer in self.layers if isinstance(layer, HistoryFrameLayer)
+        )
         self.settings = settings or AnimationSettings()
-        self.schedule = build_playback_schedule(frames, self.settings)
+        self._source_frames = tuple(frames)
+        self._source_positions = {
+            frame.frame_index: index for index, frame in enumerate(self._source_frames)
+        }
+        self._last_source_position: int | None = None
+        self.schedule = build_playback_schedule(self._source_frames, self.settings)
 
     @property
     def frame_count(self) -> int:
@@ -204,6 +220,18 @@ class SequenceAnimator:
             raise IndexError(f"Output frame {output_index} is outside 0..{self.frame_count - 1}.")
 
         frame = self.schedule[output_index].frame
+        source_position = self._source_positions[frame.frame_index]
+
+        if self._last_source_position is None or source_position < self._last_source_position:
+            history_start = 0
+        else:
+            history_start = self._last_source_position + 1
+
+        for source_frame in self._source_frames[history_start:source_position]:
+            for layer in self._history_layers:
+                layer.update_history(source_frame)
+
+        self._last_source_position = source_position
         artists: list[Artist] = []
 
         for layer in self.layers:
