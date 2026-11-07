@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 
 from tracking_visualized.domain import CoordinateSystem
 from tracking_visualized.providers.dfl import (
-    normalize_event_coordinates,
     normalize_tracking_coordinates,
+    validate_event_coordinates,
 )
 from tracking_visualized.rendering import PitchDimensions, draw_pitch
 
@@ -39,11 +39,10 @@ def main() -> None:
         for x, y in tracking_points
     ]
 
-    normalized_events = [
-        normalize_event_coordinates(
+    validated_events = [
+        validate_event_coordinates(
             x,
             y,
-            pitch,
         )
         for x, y in event_points
     ]
@@ -64,7 +63,7 @@ def main() -> None:
             (x, y),
         )
 
-    for index, (x, y) in enumerate(normalized_events):
+    for index, (x, y) in enumerate(validated_events):
         ax.scatter(
             x,
             y,

@@ -40,8 +40,8 @@ from tracking_visualized.providers.dfl import (  # noqa: E402
     iter_tracking_samples,
     load_match_metadata,
     load_shot_events,
-    normalize_event_coordinates,
     normalize_tracking_coordinates,
+    validate_event_coordinates,
 )
 from tracking_visualized.providers.dfl.shared import load_player_index  # noqa: E402
 from tracking_visualized.rendering import (  # noqa: E402
@@ -192,9 +192,8 @@ def build_event(
     shot: ShotEvent,
     event_frame: int,
     origin_frame: int,
-    coordinate_system: CoordinateSystem,
 ) -> Event:
-    x, y = normalize_event_coordinates(shot.x, shot.y, coordinate_system)
+    x, y = validate_event_coordinates(shot.x, shot.y)
 
     return Event(
         event_id=shot.event_id,
@@ -239,7 +238,7 @@ def main() -> None:
             if shot.calculated_frame is not None
             else origin_frame + round(shot.period_seconds * FPS)
         )
-        event = build_event(shot, anchor_frame, origin_frame, coordinate_system)
+        event = build_event(shot, anchor_frame, origin_frame)
     else:
         anchor_frame = origin_frame + round(args.seconds * FPS)
 
