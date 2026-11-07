@@ -1,5 +1,6 @@
 import datetime
 import xml.etree.ElementTree as ET
+from math import isfinite
 
 
 def require_element(
@@ -28,6 +29,29 @@ def require_attribute(
         raise error_cls(f"Missing required attribute '{attribute}' on <{element.tag}>.")
 
     return value
+
+
+def require_float(
+    element: ET.Element,
+    attribute: str,
+    error_cls: type[Exception],
+) -> float:
+    """Requires a finite numeric XML attribute and raises error_cls otherwise."""
+    value = require_attribute(element, attribute, error_cls)
+
+    try:
+        number = float(value)
+    except ValueError as exc:
+        raise error_cls(
+            f"Attribute '{attribute}' on <{element.tag}> must be a number, got '{value}'."
+        ) from exc
+
+    if not isfinite(number):
+        raise error_cls(
+            f"Attribute '{attribute}' on <{element.tag}> must be finite, got '{value}'."
+        )
+
+    return number
 
 
 def optional_float(
@@ -74,7 +98,7 @@ def milliseconds_to_seconds(
     return milliseconds / 1000
 
 
-def parse_timestamp(value: str, error_cls: type[Exception]) -> datetime:
+def parse_timestamp(value: str, error_cls: type[Exception]) -> datetime.datetime:
     """
     Parses an ISO-8601 timestamp string into a datetime object.
 

@@ -4,7 +4,7 @@ from tracking_visualized.domain import CoordinateSystem
 
 
 class DflCoordinateError(ValueError):
-    """Raised when a DFL coordinate cannot be normalized."""
+    """Raised when a DFL coordinate is invalid."""
 
 
 def _validate_coordinate_value(
@@ -52,31 +52,29 @@ def normalize_tracking_coordinates(
     return normalized_x, normalized_y
 
 
-def normalize_event_coordinates(
+def validate_event_coordinates(
     x: float | None,
     y: float | None,
-    coordinate_system: CoordinateSystem,
 ) -> tuple[float | None, float | None]:
     """
-    Convert Sportec event coordinates to canonical coordinates.
+    Validate Sportec event coordinates and return them unchanged.
+
+    Event coordinates already use the canonical bottom-left origin, so no
+    coordinate conversion is needed. ``None`` values are preserved; non-finite
+    values raise ``DflCoordinateError``.
 
     Args:
-        x: The x-coordinate in Sportec format.
-        y: The y-coordinate in Sportec format.
-        coordinate_system: The coordinate system of the pitch.
+        x: The event x-coordinate in meters.
+        y: The event y-coordinate in meters.
 
     Returns:
-        A tuple of normalized (x, y) coordinates in canonical format.
+        The validated (x, y) coordinates, unchanged.
     """
 
     _validate_coordinate_value(x, "x")
     _validate_coordinate_value(y, "y")
 
-    normalized_x = x
-
-    normalized_y = coordinate_system.pitch_width - y if y is not None else None
-
-    return normalized_x, normalized_y
+    return x, y
 
 
 def is_on_pitch(

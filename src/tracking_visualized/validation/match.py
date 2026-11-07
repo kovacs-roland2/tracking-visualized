@@ -3,7 +3,10 @@ from enum import StrEnum
 
 from tracking_visualized.domain import (
     EventType,
+    Frame,
     Match,
+    PeriodType,
+    TeamSide,
 )
 
 
@@ -75,6 +78,11 @@ class MatchValidationError(ValueError):
         super().__init__(report.format_text())
 
 
+def _has_partial_coordinate(x: float | None, y: float | None) -> bool:
+    """Whether exactly one of the two planar coordinates is missing."""
+    return (x is None) != (y is None)
+
+
 class _IssueCollector:
     def __init__(
         self,
@@ -134,9 +142,9 @@ def _validate_teams_and_players(
 
     player_ids = {player.player_id for player in match.players}
 
-    home_teams = [team for team in match.teams if team.side.value == "home"]
+    home_teams = [team for team in match.teams if team.side == TeamSide.HOME]
 
-    away_teams = [team for team in match.teams if team.side.value == "away"]
+    away_teams = [team for team in match.teams if team.side == TeamSide.AWAY]
 
     if len(home_teams) != 1:
         collector.add(
@@ -211,9 +219,7 @@ def _validate_player_positions(
                     ),
                 )
 
-            if (position.x is None and position.y is not None) or (
-                position.x is not None and position.y is None
-            ):
+            if _has_partial_coordinate(position.x, position.y):
                 collector.add(
                     ValidationSeverity.WARNING,
                     "position.partial_coordinate",
@@ -247,7 +253,7 @@ def _validate_ball_positions(
         if ball is None:
             continue
 
-        if (ball.x is None and ball.y is not None) or (ball.x is not None and ball.y is None):
+        if _has_partial_coordinate(ball.x, ball.y):
             collector.add(
                 ValidationSeverity.WARNING,
                 "ball.partial_coordinate",
@@ -288,7 +294,8 @@ def _validate_timeline(
 
     seen_frame_indices: set[int] = set()
 
-    previous_by_period = {}
+    previous_by_period: dict[PeriodType, Frame] = {}
+    first_frame_by_period: dict[PeriodType, Frame] = {}
 
     for frame in match.frames:
         if collector.full:
@@ -334,22 +341,15 @@ def _validate_timeline(
                 )
 
         previous_by_period[frame.time.period] = frame
+        first_frame_by_period.setdefault(frame.time.period, frame)
 
-        first_frame_by_period = {}
-
-        for frame in match.frames:
-            first_frame_by_period.setdefault(
-                frame.time.period,
-                frame,
+    for period_type, first_frame in first_frame_by_period.items():
+        if abs(first_frame.time.seconds) > 1e-6:
+            collector.add(
+                ValidationSeverity.WARNING,
+                "period.nonzero_start",
+                (f"{period_type.value} begins at {first_frame.time.seconds:.6f}s instead of 0."),
             )
-
-        for period_type, frame in first_frame_by_period.items():
-            if abs(frame.time.seconds) > 1e-6:
-                collector.add(
-                    ValidationSeverity.WARNING,
-                    "period.nonzero_start",
-                    (f"{period_type.value} begins at {frame.time.seconds:.6f}s instead of 0."),
-                )
 
 
 def _validate_events(
@@ -477,7 +477,7 @@ def _validate_events(
                     ),
                 )
 
-        if (event.x is None and event.y is not None) or (event.x is not None and event.y is None):
+        if _has_partial_coordinate(event.x, event.y):
             collector.add(
                 ValidationSeverity.WARNING,
                 "event.partial_coordinate",

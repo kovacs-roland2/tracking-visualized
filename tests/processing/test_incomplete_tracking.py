@@ -12,6 +12,7 @@ from tracking_visualized.domain import (
 )
 from tracking_visualized.processing import (
     EventSequence,
+    TimeRangeSequence,
     TrackingGapPolicy,
     TrackingRepairReport,
     repair_sequence_tracking,
@@ -112,8 +113,9 @@ def test_repair_sequence_tracking_respects_gap_policy_and_marks_unresolved():
         policy=TrackingGapPolicy(interpolate_players=False),
     )
 
+    # Same as for the ball: switching interpolation off leaves the gap, and it is reported.
     assert report.interpolated_player_positions == 0
-    assert report.unresolved_player_positions == 0
+    assert report.unresolved_player_positions == 1
     assert repaired.frames[1].player_positions == ()
 
 
@@ -183,3 +185,41 @@ def test_tracking_repair_report_tracks_completion_status():
     assert repair_report.interpolated_positions == 3
     assert repair_report.unresolved_positions == 1
     assert repair_report.is_complete is False
+
+
+def _gap_frames() -> tuple[Frame, ...]:
+    return (
+        _frame(100, 10.00, player_x=20.0, player_y=30.0),
+        _frame(101, 10.04),
+        _frame(102, 10.08, player_x=24.0, player_y=32.0),
+    )
+
+
+def test_repair_supports_manual_time_range_sequences():
+    frames = _gap_frames()
+    sequence = TimeRangeSequence(
+        frames=frames,
+        start_time=MatchTime(PeriodType.FIRST_HALF, 10.0),
+        end_time=MatchTime(PeriodType.FIRST_HALF, 10.08),
+    )
+
+    repaired, report = repair_sequence_tracking(sequence)
+
+    assert isinstance(repaired, TimeRangeSequence)
+    assert repaired.start_time == sequence.start_time
+    assert repaired.frames[1].player_positions[0].x == pytest.approx(22.0)
+    assert report.interpolated_player_positions == 1
+
+
+def test_disabled_player_interpolation_still_reports_unresolved_gaps():
+    sequence = _make_sequence(*_gap_frames())
+
+    repaired, report = repair_sequence_tracking(
+        sequence,
+        policy=TrackingGapPolicy(interpolate_players=False, interpolate_ball=False),
+    )
+
+    assert repaired.frames[1].player_positions == ()
+    assert report.interpolated_player_positions == 0
+    assert report.unresolved_player_positions == 1
+    assert report.is_complete is False

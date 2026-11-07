@@ -1,10 +1,10 @@
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection
-from matplotlib.colors import is_color_like
 from matplotlib.text import Text
 
 from tracking_visualized.domain import (
@@ -16,6 +16,7 @@ from tracking_visualized.domain import (
     PeriodType,
     ShotOutcome,
 )
+from tracking_visualized.rendering._validation import validate_colors
 
 PERIOD_LABELS = {
     PeriodType.FIRST_HALF: "1H",
@@ -40,11 +41,9 @@ class EventStyle:
     font_size: float = 12.0
 
     def __post_init__(self) -> None:
-        for name in ("shot_color", "goal_color", "goal_edge_color", "text_color", "box_color"):
-            value = getattr(self, name)
-
-            if not is_color_like(value):
-                raise ValueError(f"{name} is not a valid color: {value!r}.")
+        validate_colors(
+            self, ("shot_color", "goal_color", "goal_edge_color", "text_color", "box_color")
+        )
 
         if not 0 <= self.box_alpha <= 1:
             raise ValueError("box_alpha must be between 0 and 1.")
@@ -190,7 +189,7 @@ class EventLayer:
         event: Event,
         *,
         style: EventStyle | None = None,
-        **kwargs: float,
+        **kwargs: Any,
     ) -> "EventLayer":
         """Create a layer, looking up the shirt number of the event's player."""
 

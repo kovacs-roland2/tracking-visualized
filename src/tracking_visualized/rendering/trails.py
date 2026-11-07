@@ -1,5 +1,7 @@
 from collections import deque
 from collections.abc import Mapping, Sequence
+from itertools import pairwise
+from typing import Any
 
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
@@ -8,7 +10,11 @@ from matplotlib.colors import to_rgba
 
 from tracking_visualized.config import RenderingConfig
 from tracking_visualized.domain import Frame, Match, PeriodType, Player
-from tracking_visualized.rendering.teams import TeamStyle, resolve_team_styles
+from tracking_visualized.rendering.teams import (
+    TeamStyle,
+    resolve_team_styles,
+    validate_team_styles,
+)
 
 DEFAULT_MAX_GAP_FRAMES = 5
 
@@ -56,11 +62,7 @@ class TrailLayer:
         if max_gap_frames < 1:
             raise ValueError("max_gap_frames must be at least 1.")
 
-        for player in players:
-            if player.team_id not in team_styles:
-                raise ValueError(
-                    f"No style for team '{player.team_id}' of player '{player.player_id}'."
-                )
+        validate_team_styles(players, team_styles)
 
         self.duration_seconds = duration_seconds
 
@@ -101,7 +103,7 @@ class TrailLayer:
         *,
         home_style: TeamStyle | None = None,
         away_style: TeamStyle | None = None,
-        **kwargs: float,
+        **kwargs: Any,
     ) -> "TrailLayer":
         """Create a layer for all players of a match.
 
@@ -195,9 +197,7 @@ class TrailLayer:
                 team_id = self._players[player_id].team_id
                 red, green, blue, _ = self._team_colors[team_id]
 
-                for (start_index, _, x0, y0), (end_index, end_seconds, x1, y1) in zip(
-                    history, list(history)[1:], strict=False
-                ):
+                for (start_index, _, x0, y0), (end_index, end_seconds, x1, y1) in pairwise(history):
                     if end_index - start_index > self._max_gap_frames:
                         continue
 

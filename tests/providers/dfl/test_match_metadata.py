@@ -156,3 +156,34 @@ def test_playing_time_cannot_exceed_total_time(
         match="Playing duration cannot exceed",
     ):
         load_match_metadata(path)
+
+
+def with_environment(attributes: str) -> str:
+    return VALID_MATCH_XML.replace(
+        "    </MatchInformation>",
+        f"        <Environment {attributes} />\n    </MatchInformation>",
+    )
+
+
+def test_pitch_size_is_read_from_environment(tmp_path: Path):
+    path = write_xml(tmp_path, with_environment('PitchX="100.0" PitchY="64.0"'))
+
+    metadata = load_match_metadata(path)
+
+    assert (metadata.pitch_length, metadata.pitch_width) == (100.0, 64.0)
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        'PitchX="wide" PitchY="68.0"',
+        'PitchX="105.0" PitchY=""',
+        'PitchX="nan" PitchY="68.0"',
+        'PitchX="105.0"',
+    ],
+)
+def test_invalid_pitch_size_raises_metadata_error(tmp_path: Path, attributes: str):
+    path = write_xml(tmp_path, with_environment(attributes))
+
+    with pytest.raises(DflMatchMetadataError, match="Pitch"):
+        load_match_metadata(path)

@@ -6,6 +6,7 @@ from tracking_visualized.domain import (
     Frame,
     PlayerPosition,
 )
+from tracking_visualized.processing.selection import TimeRangeSequence
 from tracking_visualized.processing.sequences import EventSequence
 
 
@@ -61,33 +62,9 @@ class TrackingRepairReport:
         return self.unresolved_positions == 0
 
 
-def _player_is_observed(
-    position: PlayerPosition | None,
-) -> bool:
-    """Check if a player position is observed (i.e., has valid coordinates).
-
-    Args:
-        position (PlayerPosition | None): The player position to check.
-
-    Returns:
-        bool: True if the player position is observed, False otherwise.
-    """
-    return position is not None and position.x is not None and position.y is not None
-
-
-def _ball_is_observed(
-    position: BallPosition | None,
-) -> bool:
-    """
-    Check if a ball position is observed (i.e., has valid coordinates).
-
-    Args:
-        position (BallPosition | None): The ball position to check.
-
-    Returns:
-        bool: True if the ball position is observed, False otherwise.
-    """
-    return position is not None and position.x is not None and position.y is not None
+def _is_observed(position: PlayerPosition | BallPosition | None) -> bool:
+    """Whether a player or ball position exists and has both planar coordinates."""
+    return position is not None and position.is_observed
 
 
 def _interpolate(
@@ -197,6 +174,8 @@ def _repair_player(
     frames: list[Frame],
     player_id: str,
     max_gap_seconds: float,
+    *,
+    interpolate: bool = True,
 ) -> tuple[int, int]:
     """
     Repair the tracking data for a specific player by interpolating missing positions.
@@ -205,6 +184,7 @@ def _repair_player(
         frames (list[Frame]): A list of Frame objects representing the tracking data.
         player_id (str): The ID of the player to repair.
         max_gap_seconds (float): The maximum allowed gap in seconds for interpolation.
+        interpolate (bool): When False, gaps are only counted as unresolved.
 
     Returns:
         tuple[int, int]: A tuple containing the number of interpolated positions
@@ -213,7 +193,7 @@ def _repair_player(
     observed_indices = [
         index
         for index, frame in enumerate(frames)
-        if _player_is_observed(
+        if _is_observed(
             _player_position(
                 frame,
                 player_id,
@@ -262,11 +242,11 @@ def _repair_player(
             right_index,
         )
 
-        if duration > max_gap_seconds:
+        if not interpolate or duration > max_gap_seconds:
             unresolved += sum(
                 1
                 for index in missing_indices
-                if not _player_is_observed(
+                if not _is_observed(
                     _player_position(
                         frames[index],
                         player_id,
@@ -284,7 +264,7 @@ def _repair_player(
                 player_id,
             )
 
-            if _player_is_observed(existing):
+            if _is_observed(existing):
                 continue
 
             alpha = (frame.time.seconds - left_frame.time.seconds) / duration
@@ -438,7 +418,7 @@ def _repair_ball(
         tuple[int, int]: A tuple containing the number of interpolated positions
             and the number of unresolved positions."""
     observed_indices = [
-        index for index, frame in enumerate(frames) if _ball_is_observed(frame.ball_position)
+        index for index, frame in enumerate(frames) if _is_observed(frame.ball_position)
     ]
 
     interpolated = 0
@@ -447,7 +427,7 @@ def _repair_ball(
         return 0, len(frames)
 
     if len(observed_indices) == 1:
-        unresolved = sum(1 for frame in frames if not _ball_is_observed(frame.ball_position))
+        unresolved = sum(1 for frame in frames if not _is_observed(frame.ball_position))
 
         return 0, unresolved
 
@@ -479,7 +459,7 @@ def _repair_ball(
         ):
             frame = frames[index]
 
-            if _ball_is_observed(frame.ball_position):
+            if _is_observed(frame.ball_position):
                 continue
 
             alpha = (frame.time.seconds - left_frame.time.seconds) / duration
@@ -498,25 +478,25 @@ def _repair_ball(
 
             interpolated += 1
 
-    unresolved = sum(1 for frame in frames if not _ball_is_observed(frame.ball_position))
+    unresolved = sum(1 for frame in frames if not _is_observed(frame.ball_position))
 
     return interpolated, unresolved
 
 
-def repair_sequence_tracking(
-    sequence: EventSequence,
+def repair_sequence_tracking[SequenceT: (EventSequence, TimeRangeSequence)](
+    sequence: SequenceT,
     *,
     policy: TrackingGapPolicy | None = None,
-) -> tuple[EventSequence, TrackingRepairReport]:
+) -> tuple[SequenceT, TrackingRepairReport]:
     """
     Repair short gaps in an extracted tracking sequence.
 
     Args:
-        sequence (EventSequence): The extracted tracking sequence to repair.
+        sequence (EventSequence | TimeRangeSequence): The tracking sequence to repair.
         policy (TrackingGapPolicy | None): The policy for handling gaps in tracking data.
 
     Returns:
-        tuple[EventSequence, TrackingRepairReport]: A tuple containing the repaired
+        tuple[SequenceT, TrackingRepairReport]: A tuple containing the repaired
             tracking sequence and a report on the repair process."""
 
     if policy is None:
@@ -527,16 +507,16 @@ def repair_sequence_tracking(
     player_interpolated = 0
     player_unresolved = 0
 
-    if policy.interpolate_players:
-        for player_id in _sequence_player_ids(sequence.frames):
-            interpolated, unresolved = _repair_player(
-                frames,
-                player_id,
-                policy.max_player_gap_seconds,
-            )
+    for player_id in _sequence_player_ids(sequence.frames):
+        interpolated, unresolved = _repair_player(
+            frames,
+            player_id,
+            policy.max_player_gap_seconds,
+            interpolate=policy.interpolate_players,
+        )
 
-            player_interpolated += interpolated
-            player_unresolved += unresolved
+        player_interpolated += interpolated
+        player_unresolved += unresolved
 
     ball_interpolated = 0
     ball_unresolved = 0
@@ -551,7 +531,7 @@ def repair_sequence_tracking(
         )
 
     else:
-        ball_unresolved = sum(1 for frame in frames if not _ball_is_observed(frame.ball_position))
+        ball_unresolved = sum(1 for frame in frames if not _is_observed(frame.ball_position))
 
     repaired = replace(
         sequence,

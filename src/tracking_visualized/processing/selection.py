@@ -1,8 +1,12 @@
-from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
-from math import isfinite
 
 from tracking_visualized.domain import Frame, Match, MatchTime, PeriodType
+from tracking_visualized.processing.frame_windows import (
+    frames_in_window,
+    period_end_seconds,
+    period_frames,
+    validate_seconds,
+)
 from tracking_visualized.processing.sequences import (
     EventSequence,
     extract_sequence_by_id,
@@ -53,77 +57,6 @@ class TimeRangeSequence:
 
 
 type SelectedSequence = EventSequence | TimeRangeSequence
-
-
-def _validate_seconds(
-    value: float,
-    name: str,
-) -> None:
-    """
-    Validate that a time value is finite and non-negative.
-
-    Args:
-        value (float): The time value to validate.
-        name (str): The name of the time value for error messages.
-    Raises:
-        SequenceSelectionError: If the value is not finite or is negative.
-    """
-    if not isfinite(value):
-        raise SequenceSelectionError(f"{name} must be finite.")
-
-    if value < 0:
-        raise SequenceSelectionError(f"{name} cannot be negative.")
-
-
-def _period_frames(
-    match: Match,
-    period: PeriodType,
-) -> tuple[Frame, ...]:
-    """
-    Retrieve all tracking frames for a specific match period.
-
-    Args:
-        match (Match): The match object containing tracking frames.
-        period (PeriodType): The period for which to retrieve frames.
-
-    Returns:
-        tuple[Frame, ...]: A tuple of frames corresponding to the specified period."""
-    frames = tuple(
-        sorted(
-            (frame for frame in match.frames if frame.time.period == period),
-            key=lambda frame: (
-                frame.time.seconds,
-                frame.frame_index,
-            ),
-        )
-    )
-
-    if not frames:
-        raise SequenceSelectionError(f"No tracking frames available for {period.value}.")
-
-    return frames
-
-
-def _period_end_seconds(
-    match: Match,
-    period: PeriodType,
-    frames: tuple[Frame, ...],
-) -> float:
-    """
-    Determine the end time of a match period in seconds.
-
-    Args:
-        match (Match): The match object containing period information.
-        period (PeriodType): The period for which to determine the end time.
-        frames (tuple[Frame, ...]): The frames corresponding to the specified period.
-
-    Returns:
-        float: The end time of the match period in seconds."""
-    for match_period in match.periods:
-        if match_period.period == period and match_period.duration_seconds is not None:
-            return match_period.duration_seconds
-
-    return frames[-1].time.seconds
 
 
 def _validate_period_window(
@@ -201,29 +134,14 @@ def select_time_range(
     Raises:
         SequenceSelectionError: If the selection is invalid or no frames are found."""
 
-    _validate_seconds(
-        start_seconds,
-        "start_seconds",
-    )
-
-    _validate_seconds(
-        end_seconds,
-        "end_seconds",
-    )
+    validate_seconds(start_seconds, "start_seconds", SequenceSelectionError)
+    validate_seconds(end_seconds, "end_seconds", SequenceSelectionError)
 
     if end_seconds <= start_seconds:
         raise SequenceSelectionError("end_seconds must be greater than start_seconds.")
 
-    frames = _period_frames(
-        match,
-        period,
-    )
-
-    period_end = _period_end_seconds(
-        match,
-        period,
-        frames,
-    )
+    frames = period_frames(match, period, SequenceSelectionError)
+    period_end = period_end_seconds(match, period, frames)
 
     _validate_period_window(
         period,
@@ -232,19 +150,7 @@ def select_time_range(
         period_end,
     )
 
-    frame_times = tuple(frame.time.seconds for frame in frames)
-
-    start_index = bisect_left(
-        frame_times,
-        start_seconds,
-    )
-
-    end_index = bisect_right(
-        frame_times,
-        end_seconds,
-    )
-
-    selected_frames = frames[start_index:end_index]
+    selected_frames = frames_in_window(frames, start_seconds, end_seconds)
 
     if not selected_frames:
         raise SequenceSelectionError(

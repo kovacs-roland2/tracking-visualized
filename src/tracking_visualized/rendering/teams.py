@@ -1,9 +1,8 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from matplotlib.colors import is_color_like
-
-from tracking_visualized.domain import Team, TeamSide
+from tracking_visualized.domain import Player, Team, TeamSide
+from tracking_visualized.rendering._validation import validate_colors
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,13 +15,7 @@ class TeamStyle:
     edge_width: float = 1.5
 
     def __post_init__(self) -> None:
-        for name, value in (
-            ("marker_color", self.marker_color),
-            ("edge_color", self.edge_color),
-            ("number_color", self.number_color),
-        ):
-            if not is_color_like(value):
-                raise ValueError(f"{name} is not a valid color: {value!r}.")
+        validate_colors(self, ("marker_color", "edge_color", "number_color"))
 
         if self.edge_width < 0:
             raise ValueError("edge_width must not be negative.")
@@ -30,6 +23,19 @@ class TeamStyle:
 
 DEFAULT_HOME_STYLE = TeamStyle(marker_color="#d62828")
 DEFAULT_AWAY_STYLE = TeamStyle(marker_color="#1d4ed8")
+
+
+def validate_team_styles(
+    players: Iterable[Player],
+    team_styles: Mapping[str, "TeamStyle"],
+) -> None:
+    """Raise ValueError if a player belongs to a team that has no style."""
+
+    for player in players:
+        if player.team_id not in team_styles:
+            raise ValueError(
+                f"No style for team '{player.team_id}' of player '{player.player_id}'."
+            )
 
 
 def resolve_team_styles(
@@ -62,4 +68,5 @@ __all__ = [
     "DEFAULT_HOME_STYLE",
     "TeamStyle",
     "resolve_team_styles",
+    "validate_team_styles",
 ]

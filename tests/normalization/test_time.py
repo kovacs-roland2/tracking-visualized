@@ -276,3 +276,32 @@ def test_naive_timestamp_is_rejected():
                 30,
             ),
         )
+
+
+def test_normalizing_a_period_without_tracking_raises_value_error():
+    timeline = MatchTimeline.from_source_frames(
+        [
+            sample(PeriodType.FIRST_HALF, 10000, 0.00),
+            sample(PeriodType.FIRST_HALF, 10001, 0.04),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="No tracking frames for second_half"):
+        timeline.normalize_tracking_time(
+            PeriodType.SECOND_HALF,
+            20000,
+            START + timedelta(seconds=3000),
+        )
+
+
+def test_nearest_frame_scales_to_long_periods():
+    # ~70k frames per half: lookups must not rebuild a timestamp list each call.
+    frames = [sample(PeriodType.FIRST_HALF, 1000 + i, i * 0.04) for i in range(70_000)]
+    timeline = MatchTimeline.from_source_frames(frames)
+
+    for index in (0, 35_000, 69_999):
+        target = START + timedelta(seconds=index * 0.04 + 0.01)
+        found = timeline.nearest_frame(PeriodType.FIRST_HALF, target, max_difference_seconds=0.02)
+
+        assert found is not None
+        assert found.source_frame_number == 1000 + index

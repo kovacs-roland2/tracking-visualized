@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from tracking_visualized.domain import (
@@ -428,3 +430,42 @@ def test_validate_match_or_raise_reports_errors():
         validate_match_or_raise(invalid_match)
 
     assert "event.unknown_frame" in str(exc_info.value)
+
+
+def build_frames(count: int, *, start_seconds: float, start_index: int = 100) -> tuple[Frame, ...]:
+    return tuple(
+        Frame(
+            frame_index=start_index + i,
+            time=MatchTime(
+                period=PeriodType.FIRST_HALF,
+                seconds=start_seconds + i / 25,
+            ),
+            player_positions=(PlayerPosition(player_id="player-7", x=50.0, y=30.0),),
+            ball_position=None,
+        )
+        for i in range(count)
+    )
+
+
+def test_nonzero_period_start_is_reported_once():
+    match = replace(build_valid_match(), frames=build_frames(50, start_seconds=5.0), events=())
+
+    report = validate_match(match)
+    start_warnings = [i for i in report.warnings if i.code == "period.nonzero_start"]
+
+    assert len(start_warnings) == 1
+    assert "first_half" in start_warnings[0].message
+
+
+def test_period_start_warning_does_not_hide_later_errors():
+    # With the issue cap reached by repeated warnings, event errors used to be dropped.
+    event = replace(build_valid_match().events[0], team_id="ghost-team", frame_index=None)
+    match = replace(
+        build_valid_match(),
+        frames=build_frames(100, start_seconds=5.0),
+        events=(event,),
+    )
+
+    report = validate_match(match, max_issues=10)
+
+    assert "event.unknown_team" in {issue.code for issue in report.errors}

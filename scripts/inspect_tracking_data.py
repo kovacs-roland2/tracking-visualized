@@ -1,17 +1,10 @@
 from itertools import islice
-from pathlib import Path
+
+from sample_data import METADATA_FILE, TRACKING_FILE
 
 from tracking_visualized.providers.dfl import (
     iter_tracking_samples,
 )
-
-MATCH_ID = "J03WMX"
-
-BASE_DIR = Path("data/raw/dfl") / MATCH_ID
-
-TRACKING_FILE = BASE_DIR / ("DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-J03WMX.xml")
-
-METADATA_FILE = BASE_DIR / ("DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-J03WMX.xml")
 
 
 def main() -> None:

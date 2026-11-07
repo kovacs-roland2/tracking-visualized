@@ -2,8 +2,8 @@ from tracking_visualized.providers.dfl.coordinates import (
     DflCoordinateError,
     create_coordinate_system,
     is_on_pitch,
-    normalize_event_coordinates,
     normalize_tracking_coordinates,
+    validate_event_coordinates,
 )
 from tracking_visualized.providers.dfl.events import (
     DflEventError,
@@ -65,8 +65,8 @@ __all__ = [
     "DflCoordinateError",
     "create_coordinate_system",
     "is_on_pitch",
-    "normalize_event_coordinates",
     "normalize_tracking_coordinates",
+    "validate_event_coordinates",
     "build_match_timeline",
     "normalize_shot_time",
     "NormalizedEventTime",

@@ -1,15 +1,18 @@
-from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
-from math import isfinite
 
 from tracking_visualized.domain import (
     Event,
     Frame,
     Match,
     MatchTime,
-    PeriodType,
 )
 from tracking_visualized.processing.events import EventCatalog
+from tracking_visualized.processing.frame_windows import (
+    frames_in_window,
+    period_end_seconds,
+    period_frames,
+    validate_seconds,
+)
 
 
 class SequenceExtractionError(ValueError):
@@ -105,49 +108,6 @@ class EventSequence:
         return None
 
 
-def _validate_duration(
-    value: float,
-    name: str,
-) -> None:
-    """
-    Validate that a duration value is finite and non-negative.
-
-    Args:
-        value (float): The duration value to validate.
-        name (str): The name of the duration parameter (for error messages).
-    """
-    if not isfinite(value):
-        raise SequenceExtractionError(f"{name} must be finite.")
-
-    if value < 0:
-        raise SequenceExtractionError(f"{name} cannot be negative.")
-
-
-def _period_end_seconds(
-    match: Match,
-    period: PeriodType,
-    period_frames: tuple[Frame, ...],
-) -> float:
-    """
-    Determine the end time of a given period in seconds.
-
-    Args:
-        match (Match): The match object containing period information.
-        period (PeriodType): The period type for which to determine the end time.
-        period_frames (tuple[Frame, ...]): The frames corresponding to the period.
-
-    Returns:
-        float: The end time of the period in seconds."""
-    for match_period in match.periods:
-        if match_period.period == period and match_period.duration_seconds is not None:
-            return match_period.duration_seconds
-
-    if not period_frames:
-        raise SequenceExtractionError(f"No tracking frames available for {period.value}.")
-
-    return period_frames[-1].time.seconds
-
-
 def extract_sequence(
     match: Match,
     event: Event,
@@ -167,33 +127,11 @@ def extract_sequence(
     Returns:
         EventSequence: The extracted sequence of frames around the event.
     """
-    _validate_duration(
-        pre_event_seconds,
-        "pre_event_seconds",
-    )
+    validate_seconds(pre_event_seconds, "pre_event_seconds", SequenceExtractionError)
+    validate_seconds(post_event_seconds, "post_event_seconds", SequenceExtractionError)
 
-    _validate_duration(
-        post_event_seconds,
-        "post_event_seconds",
-    )
-
-    period_frames = tuple(
-        sorted(
-            (frame for frame in match.frames if frame.time.period == event.time.period),
-            key=lambda frame: frame.time.seconds,
-        )
-    )
-
-    if not period_frames:
-        raise SequenceExtractionError(
-            f"No tracking frames available for {event.time.period.value}."
-        )
-
-    period_end = _period_end_seconds(
-        match,
-        event.time.period,
-        period_frames,
-    )
+    frames_of_period = period_frames(match, event.time.period, SequenceExtractionError)
+    period_end = period_end_seconds(match, event.time.period, frames_of_period)
 
     if event.time.seconds > period_end:
         raise SequenceExtractionError(
@@ -213,19 +151,7 @@ def extract_sequence(
         event.time.seconds + post_event_seconds,
     )
 
-    frame_times = [frame.time.seconds for frame in period_frames]
-
-    start_index = bisect_left(
-        frame_times,
-        start_seconds,
-    )
-
-    end_index = bisect_right(
-        frame_times,
-        end_seconds,
-    )
-
-    frames = period_frames[start_index:end_index]
+    frames = frames_in_window(frames_of_period, start_seconds, end_seconds)
 
     if not frames:
         raise SequenceExtractionError(

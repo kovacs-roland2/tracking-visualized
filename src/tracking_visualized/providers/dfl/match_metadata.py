@@ -9,6 +9,7 @@ from tracking_visualized.providers.dfl.utils import (
     milliseconds_to_seconds,
     require_attribute,
     require_element,
+    require_float,
 )
 
 
@@ -292,20 +293,8 @@ def load_match_metadata(path: Path) -> MatchMetadata:
     environment = match_information.find("Environment")
 
     if environment is not None:
-        pitch_length = float(
-            require_attribute(
-                environment,
-                "PitchX",
-                DflMatchMetadataError,
-            )
-        )
-        pitch_width = float(
-            require_attribute(
-                environment,
-                "PitchY",
-                DflMatchMetadataError,
-            )
-        )
+        pitch_length = require_float(environment, "PitchX", DflMatchMetadataError)
+        pitch_width = require_float(environment, "PitchY", DflMatchMetadataError)
     else:
         pitch_length = 105.0
         pitch_width = 68.0

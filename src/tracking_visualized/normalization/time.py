@@ -130,7 +130,10 @@ class MatchTimeline:
         Returns:
             tuple[int, MatchTime]: Tuple containing the normalized frame index and MatchTime object.
         """
-        period_timeline = self._periods_by_type[period]
+        period_timeline = self._periods_by_type.get(period)
+
+        if period_timeline is None:
+            raise ValueError(f"No tracking frames for {period.value}.")
 
         frame_index = (
             period_timeline.global_start_index
@@ -195,11 +198,11 @@ class MatchTimeline:
             return None
 
         frames = timeline.frames
-        timestamps = [frame.timestamp for frame in frames]
 
         index = bisect_left(
-            timestamps,
+            frames,
             timestamp,
+            key=lambda frame: frame.timestamp,
         )
 
         candidates: list[FrameTime] = []

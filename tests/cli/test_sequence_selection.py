@@ -1,7 +1,10 @@
+from dataclasses import replace
+
 import pytest
 
 from tracking_visualized.cli.sequence_selection import (
     format_sequence_summary,
+    run_sequence_selection_cli,
     select_sequence_from_cli_args,
 )
 from tracking_visualized.domain import (
@@ -225,3 +228,41 @@ def test_event_summary():
     assert "shot-1" in text
     assert "Frames:" in text
     assert "Duration:" in text
+
+
+def test_run_cli_reports_unknown_event_cleanly(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        run_sequence_selection_cli(build_test_match(), ["event", "--event-id", "missing"])
+
+    error = capsys.readouterr().err
+
+    assert exit_info.value.code == 2
+    assert "Unknown event ID 'missing'" in error
+    # KeyError.__str__ would wrap the whole message in an extra pair of quotes.
+    assert '"Unknown' not in error
+    assert "'Unknown" not in error
+
+
+def test_run_cli_reports_extraction_failure_as_usage_error(capsys):
+    match = build_test_match()
+    late_event = replace(
+        match.events[0],
+        time=MatchTime(period=PeriodType.FIRST_HALF, seconds=35.0),
+        frame_index=None,
+    )
+    match = replace(match, events=(late_event,))
+
+    with pytest.raises(SystemExit) as exit_info:
+        run_sequence_selection_cli(match, ["event", "--event-id", "shot-1"])
+
+    assert exit_info.value.code == 2
+    assert "beyond the first_half boundary" in capsys.readouterr().err
+
+
+def test_run_cli_prints_summary_for_valid_selection(capsys):
+    sequence = run_sequence_selection_cli(
+        build_test_match(), ["event", "--event-id", "shot-1", "--pre", "5", "--post", "2"]
+    )
+
+    assert isinstance(sequence, EventSequence)
+    assert "Selected event sequence" in capsys.readouterr().out

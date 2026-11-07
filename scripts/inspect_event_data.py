@@ -1,14 +1,8 @@
-from pathlib import Path
+from sample_data import EVENTS_FILE, METADATA_FILE
 
 from tracking_visualized.providers.dfl import (
     load_shot_events,
 )
-
-BASE_DIR = Path("data/raw/dfl/J03WMX")
-
-EVENTS_FILE = BASE_DIR / ("DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-J03WMX.xml")
-
-METADATA_FILE = BASE_DIR / ("DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-J03WMX.xml")
 
 
 def main() -> None:

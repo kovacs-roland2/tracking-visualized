@@ -14,6 +14,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
+from sample_data import EVENTS_FILE, METADATA_FILE, TRACKING_FILE  # noqa: E402
 
 from tracking_visualized.config import RenderingConfig  # noqa: E402
 from tracking_visualized.domain import (  # noqa: E402
@@ -40,6 +41,7 @@ from tracking_visualized.providers.dfl import (  # noqa: E402
     load_match_metadata,
     load_shot_events,
     normalize_tracking_coordinates,
+    validate_event_coordinates,
 )
 from tracking_visualized.providers.dfl.shared import load_player_index  # noqa: E402
 from tracking_visualized.rendering import (  # noqa: E402
@@ -55,11 +57,6 @@ from tracking_visualized.rendering import (  # noqa: E402
     resolve_team_styles,
 )
 
-MATCH_ID = "J03WMX"
-BASE_DIR = Path("data/raw/dfl") / MATCH_ID
-TRACKING_FILE = BASE_DIR / ("DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-J03WMX.xml")
-METADATA_FILE = BASE_DIR / ("DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-J03WMX.xml")
-EVENTS_FILE = BASE_DIR / ("DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-J03WMX.xml")
 OUTPUT_FILE = Path("output") / "players.png"
 ANIMATION_FILE = Path("output") / "sequence.gif"
 ANIMATION_DPI = 80
@@ -196,17 +193,16 @@ def build_event(
     event_frame: int,
     origin_frame: int,
 ) -> Event:
+    x, y = validate_event_coordinates(shot.x, shot.y)
+
     return Event(
         event_id=shot.event_id,
         event_type=EventType.SHOT,
         time=MatchTime(PeriodType.FIRST_HALF, (event_frame - origin_frame) / FPS),
         team_id=shot.team_id,
         player_id=shot.player_id,
-        # DFL event coordinates already share the pitch frame of normalized tracking
-        # coordinates (checked against the shooter's tracked position for every
-        # first-half shot). normalize_event_coordinates would mirror y, so it is not used.
-        x=shot.x,
-        y=shot.y,
+        x=x,
+        y=y,
         frame_index=event_frame,
         shot_outcome=ShotOutcome(shot.outcome.value),
         xg=shot.xg,
