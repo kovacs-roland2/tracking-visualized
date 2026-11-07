@@ -188,6 +188,8 @@ class EventLayer:
         ax: Axes,
         match: Match,
         event: Event,
+        *,
+        style: EventStyle | None = None,
         **kwargs: float,
     ) -> "EventLayer":
         """Create a layer, looking up the shirt number of the event's player."""
@@ -200,7 +202,7 @@ class EventLayer:
             except KeyError:
                 shirt_number = None
 
-        return cls(ax, event, shirt_number=shirt_number, **kwargs)
+        return cls(ax, event, shirt_number=shirt_number, style=style, **kwargs)
 
     @property
     def label_text(self) -> str:
