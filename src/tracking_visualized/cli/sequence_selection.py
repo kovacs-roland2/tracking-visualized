@@ -6,6 +6,7 @@ from tracking_visualized.domain import Match, PeriodType
 from tracking_visualized.processing import (
     EventSequence,
     SelectedSequence,
+    SequenceExtractionError,
     SequenceSelectionError,
     TimeRangeSequence,
     select_event_sequence,
@@ -242,10 +243,9 @@ def run_sequence_selection_cli(
             match,
             args,
         )
-    except (
-        KeyError,
-        SequenceSelectionError,
-    ) as exc:
+    except KeyError as exc:
+        parser.error(str(exc.args[0]) if exc.args else "Unknown key.")
+    except (SequenceSelectionError, SequenceExtractionError) as exc:
         parser.error(str(exc))
 
     print(format_sequence_summary(sequence))
