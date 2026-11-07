@@ -1,59 +1,15 @@
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle, Rectangle
 
 from tracking_visualized.domain import CoordinateSystem
 from tracking_visualized.providers.dfl import (
     normalize_event_coordinates,
     normalize_tracking_coordinates,
 )
+from tracking_visualized.rendering import PitchDimensions, draw_pitch
 
 OUTPUT_PATH = Path("output/debug_coordinate_normalization.png")
-
-
-def draw_pitch(
-    ax: plt.Axes,
-    pitch: CoordinateSystem,
-) -> None:
-    length = pitch.pitch_length
-    width = pitch.pitch_width
-
-    ax.add_patch(
-        Rectangle(
-            (0, 0),
-            length,
-            width,
-            fill=False,
-        )
-    )
-
-    ax.plot(
-        [length / 2, length / 2],
-        [0, width],
-    )
-
-    ax.add_patch(
-        Circle(
-            (length / 2, width / 2),
-            radius=9.15,
-            fill=False,
-        )
-    )
-
-    ax.scatter(
-        length / 2,
-        width / 2,
-        marker=".",
-    )
-
-    ax.set_xlim(-5, length + 5)
-    ax.set_ylim(-5, width + 5)
-
-    ax.set_aspect("equal")
-
-    ax.set_xlabel("x (meters)")
-    ax.set_ylabel("y (meters)")
 
 
 def main() -> None:
@@ -69,9 +25,9 @@ def main() -> None:
     ]
 
     event_points = [
-        (0.0, 68.0),
+        (0.0, 0.0),
         (52.5, 34.0),
-        (105.0, 0.0),
+        (105.0, 68.0),
     ]
 
     normalized_tracking = [
@@ -94,10 +50,7 @@ def main() -> None:
 
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    draw_pitch(
-        ax,
-        pitch,
-    )
+    draw_pitch(ax, PitchDimensions.from_coordinate_system(pitch))
 
     for index, (x, y) in enumerate(normalized_tracking):
         ax.scatter(
