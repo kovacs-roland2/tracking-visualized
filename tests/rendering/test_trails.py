@@ -64,10 +64,11 @@ def make_layer(ax, **kwargs) -> TrailLayer:
 def make_frame(
     frame_index: int,
     positions: dict[str, tuple[float | None, float | None]],
+    period: PeriodType = PeriodType.FIRST_HALF,
 ) -> Frame:
     return Frame(
         frame_index=frame_index,
-        time=MatchTime(period=PeriodType.FIRST_HALF, seconds=frame_index / FPS),
+        time=MatchTime(period=period, seconds=frame_index / FPS),
         player_positions=tuple(
             PlayerPosition(player_id=player_id, x=x, y=y) for player_id, (x, y) in positions.items()
         ),
@@ -228,6 +229,19 @@ def test_frames_going_backwards_reset_the_trail(ax):
     layer.update(make_frame(1, {"h1": (51.0, 20.0)}))
 
     assert segments(layer, "home") == [[(50.0, 20.0), (51.0, 20.0)]]
+
+
+def test_period_change_resets_trails_even_when_frame_indices_are_consecutive(ax):
+    layer = make_layer(ax)
+    layer.update(make_frame(100, {"h1": (10.0, 20.0)}))
+
+    layer.update(make_frame(101, {"h1": (80.0, 40.0)}, period=PeriodType.SECOND_HALF))
+
+    assert segments(layer, "home") == []
+
+    layer.update(make_frame(102, {"h1": (81.0, 40.0)}, period=PeriodType.SECOND_HALF))
+
+    assert segments(layer, "home") == [[(80.0, 40.0), (81.0, 40.0)]]
 
 
 def test_large_forward_jump_does_not_connect_old_points(ax):

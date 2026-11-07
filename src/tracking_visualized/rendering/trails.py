@@ -7,7 +7,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
 
 from tracking_visualized.config import RenderingConfig
-from tracking_visualized.domain import Frame, Match, Player
+from tracking_visualized.domain import Frame, Match, PeriodType, Player
 from tracking_visualized.rendering.teams import TeamStyle, resolve_team_styles
 
 DEFAULT_MAX_GAP_FRAMES = 5
@@ -26,8 +26,8 @@ class TrailLayer:
     player has no observed position for more than ``max_gap_frames`` frames, so
     lines are never drawn across long tracking gaps.
 
-    History is cleared automatically when frames go backwards (for example when
-    a new sequence starts), and can be cleared explicitly with ``reset``.
+    History is cleared automatically when frames go backwards, when the match
+    period changes, and can be cleared explicitly with ``reset``.
     Updating again with the same frame index does not add a duplicate point.
     """
 
@@ -81,6 +81,7 @@ class TrailLayer:
             player.player_id: deque() for player in players
         }
         self._last_frame_index: int | None = None
+        self._last_period: PeriodType | None = None
 
         self.lines: dict[str, LineCollection] = {}
 
@@ -134,6 +135,7 @@ class TrailLayer:
             history.clear()
 
         self._last_frame_index = None
+        self._last_period = None
 
         for collection in self.lines.values():
             collection.set_segments([])
@@ -146,14 +148,19 @@ class TrailLayer:
         """
 
         index = frame.frame_index
+        period = frame.time.period
 
-        if self._last_frame_index is not None and index < self._last_frame_index:
+        period_changed = self._last_period is not None and period != self._last_period
+        index_went_backwards = self._last_frame_index is not None and index < self._last_frame_index
+
+        if period_changed or index_went_backwards:
             self.reset()
 
         if self._last_frame_index is None or index > self._last_frame_index:
             self._record(frame)
 
         self._last_frame_index = index
+        self._last_period = period
         self._prune(index)
         self._redraw(index)
 
