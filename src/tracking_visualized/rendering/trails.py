@@ -12,7 +12,7 @@ from tracking_visualized.rendering.teams import TeamStyle, resolve_team_styles
 
 DEFAULT_MAX_GAP_FRAMES = 5
 
-type TrailPoint = tuple[int, float, float]
+type TrailPoint = tuple[int, float, float, float]
 
 
 class TrailLayer:
@@ -22,9 +22,10 @@ class TrailLayer:
     line segments that fade out with age. Artists are created once; ``update``
     only replaces their segments.
 
-    Trails are cut off after ``duration_seconds``. A trail is broken where a
-    player has no observed position for more than ``max_gap_frames`` frames, so
-    lines are never drawn across long tracking gaps.
+    Trails are cut off after ``duration_seconds`` of source match time. A trail
+    is broken where a player has no observed position for more than
+    ``max_gap_frames`` frames, so lines are never drawn across long tracking
+    gaps.
 
     History is cleared automatically when frames go backwards, when the match
     period changes, and can be cleared explicitly with ``reset``.
@@ -38,7 +39,6 @@ class TrailLayer:
         team_styles: Mapping[str, TeamStyle],
         *,
         duration_seconds: float = 2.0,
-        fps: int = 25,
         line_width: float = 2.0,
         max_alpha: float = 0.6,
         max_gap_frames: int = DEFAULT_MAX_GAP_FRAMES,
@@ -46,9 +46,6 @@ class TrailLayer:
     ) -> None:
         if duration_seconds < 0:
             raise ValueError("duration_seconds must not be negative.")
-
-        if fps <= 0:
-            raise ValueError("fps must be positive.")
 
         if line_width <= 0:
             raise ValueError("line_width must be positive.")
@@ -66,7 +63,6 @@ class TrailLayer:
                 )
 
         self.duration_seconds = duration_seconds
-        self.window_frames = round(duration_seconds * fps)
 
         self._max_alpha = max_alpha
         self._max_gap_frames = max_gap_frames
@@ -109,8 +105,9 @@ class TrailLayer:
     ) -> "TrailLayer":
         """Create a layer for all players of a match.
 
-        Trail duration and fps come from ``config`` (RenderingConfig defaults
-        when omitted).
+        Trail duration comes from ``config`` (RenderingConfig defaults when
+        omitted). Expiry is measured against source timestamps, independently
+        of the output rendering frame rate.
         """
 
         config = config or RenderingConfig()
@@ -120,7 +117,6 @@ class TrailLayer:
             match.players,
             resolve_team_styles(match.teams, home=home_style, away=away_style),
             duration_seconds=config.trail_duration_seconds,
-            fps=config.fps,
             **kwargs,
         )
 
@@ -147,6 +143,14 @@ class TrailLayer:
             All artists of the layer, as expected by Matplotlib's FuncAnimation.
         """
 
+        self.update_history(frame)
+        self._redraw(frame.time.seconds)
+
+        return self.artists
+
+    def update_history(self, frame: Frame) -> None:
+        """Advance trail history without redrawing the current artists."""
+
         index = frame.frame_index
         period = frame.time.period
 
@@ -161,10 +165,7 @@ class TrailLayer:
 
         self._last_frame_index = index
         self._last_period = period
-        self._prune(index)
-        self._redraw(index)
-
-        return self.artists
+        self._prune(frame.time.seconds)
 
     def _record(self, frame: Frame) -> None:
         """Record the positions of all observed players in the current frame."""
@@ -172,34 +173,36 @@ class TrailLayer:
             if position.player_id not in self._players or not position.is_observed:
                 continue
 
-            self._history[position.player_id].append((frame.frame_index, position.x, position.y))
+            self._history[position.player_id].append(
+                (frame.frame_index, frame.time.seconds, position.x, position.y)
+            )
 
-    def _prune(self, current_index: int) -> None:
-        """Remove old positions that are outside the trail window."""
-        oldest_kept = current_index - self.window_frames
+    def _prune(self, current_seconds: float) -> None:
+        """Remove old positions that are outside the source-time window."""
+        oldest_kept = current_seconds - self.duration_seconds
 
         for history in self._history.values():
-            while history and history[0][0] < oldest_kept:
+            while history and history[0][1] < oldest_kept:
                 history.popleft()
 
-    def _redraw(self, current_index: int) -> None:
-        """Redraw the trails for all players based on the current frame index."""
+    def _redraw(self, current_seconds: float) -> None:
+        """Redraw trails based on the current source timestamp."""
         segments: dict[str, list[list[tuple[float, float]]]] = {t: [] for t in self._team_ids}
         colors: dict[str, list[tuple[float, float, float, float]]] = {t: [] for t in self._team_ids}
 
-        if self.window_frames > 0:
+        if self.duration_seconds > 0:
             for player_id, history in self._history.items():
                 team_id = self._players[player_id].team_id
                 red, green, blue, _ = self._team_colors[team_id]
 
-                for (start_index, x0, y0), (end_index, x1, y1) in zip(
+                for (start_index, _, x0, y0), (end_index, end_seconds, x1, y1) in zip(
                     history, list(history)[1:], strict=False
                 ):
                     if end_index - start_index > self._max_gap_frames:
                         continue
 
-                    age = current_index - end_index
-                    alpha = self._max_alpha * (1 - age / self.window_frames)
+                    age = current_seconds - end_seconds
+                    alpha = self._max_alpha * (1 - age / self.duration_seconds)
 
                     segments[team_id].append([(x0, y0), (x1, y1)])
                     colors[team_id].append((red, green, blue, max(alpha, 0.0)))

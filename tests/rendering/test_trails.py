@@ -56,7 +56,6 @@ def ax():
 
 def make_layer(ax, **kwargs) -> TrailLayer:
     kwargs.setdefault("duration_seconds", DURATION)
-    kwargs.setdefault("fps", FPS)
 
     return TrailLayer(ax, PLAYERS, STYLES, **kwargs)
 
@@ -94,7 +93,6 @@ def alphas(layer: TrailLayer, team_id: str) -> list[float]:
 def test_invalid_arguments_raise(ax):
     for kwargs in (
         {"duration_seconds": -1},
-        {"fps": 0},
         {"line_width": 0},
         {"max_alpha": 0},
         {"max_alpha": 1.5},
@@ -109,9 +107,9 @@ def test_player_without_team_style_raises(ax):
         TrailLayer(ax, PLAYERS, {"home": DEFAULT_HOME_STYLE})
 
 
-def test_window_frames_from_duration_and_fps(ax):
-    assert make_layer(ax).window_frames == 10
-    assert make_layer(ax, duration_seconds=0.25).window_frames == 2
+def test_duration_is_stored_in_source_seconds(ax):
+    assert make_layer(ax).duration_seconds == DURATION
+    assert make_layer(ax, duration_seconds=0.25).duration_seconds == 0.25
 
 
 def test_first_frame_has_no_trail(ax):
@@ -302,8 +300,37 @@ def test_from_match_uses_rendering_config(ax):
 
     layer = TrailLayer.from_match(ax, match, RenderingConfig(trail_duration_seconds=3.0, fps=20))
 
-    assert layer.window_frames == 60
+    assert layer.duration_seconds == 3.0
     assert set(layer.lines) == {"home", "away"}
+
+
+@pytest.mark.parametrize("output_fps", [20, 50])
+def test_from_match_trail_expiry_is_independent_of_rendering_fps(ax, output_fps):
+    match = Match(
+        metadata=MatchMetadata(match_id="m1", competition="Liga", season="2026"),
+        coordinate_system=CoordinateSystem(pitch_length=105.0, pitch_width=68.0),
+        periods=(),
+        teams=(HOME, AWAY),
+        players=PLAYERS,
+        frames=(),
+        events=(),
+    )
+    layer = TrailLayer.from_match(ax, match, RenderingConfig(fps=output_fps))
+
+    for index in range(101):
+        frame = Frame(
+            frame_index=index,
+            time=MatchTime(period=PeriodType.FIRST_HALF, seconds=index / 25),
+            player_positions=(PlayerPosition(player_id="h1", x=float(index), y=10.0),),
+            ball_position=None,
+        )
+        layer.update(frame)
+
+    drawn = segments(layer, "home")
+
+    assert len(drawn) == 50
+    assert drawn[0][0] == (50.0, 10.0)
+    assert drawn[-1][1] == (100.0, 10.0)
 
 
 def test_trail_animation_over_frames(ax, tmp_path):
