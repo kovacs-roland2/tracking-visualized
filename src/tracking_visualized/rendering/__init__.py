@@ -24,6 +24,8 @@ from tracking_visualized.rendering.pitch import (
     PitchDimensionsError,
     PitchStyle,
     draw_pitch,
+    pitch_data_transform,
+    pitch_view_transform,
 )
 from tracking_visualized.rendering.players import (
     PlayerLayer,
@@ -31,6 +33,7 @@ from tracking_visualized.rendering.players import (
 )
 from tracking_visualized.rendering.scene import (
     SequenceScene,
+    apply_video_layout,
     build_sequence_scene,
     create_sequence_animator,
     create_video_animator,
@@ -77,6 +80,7 @@ __all__ = [
     "VideoRenderError",
     "VideoValidationError",
     "animate_sequence",
+    "apply_video_layout",
     "build_playback_schedule",
     "build_sequence_scene",
     "create_sequence_animator",
@@ -89,6 +93,8 @@ __all__ = [
     "find_ffprobe",
     "format_event_time",
     "format_event_type",
+    "pitch_data_transform",
+    "pitch_view_transform",
     "render_video",
     "resolve_team_styles",
     "validate_video_info",

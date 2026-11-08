@@ -5,6 +5,7 @@ from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection
 from matplotlib.text import Text
+from matplotlib.transforms import Transform
 
 from tracking_visualized.domain import Frame, Match, Player
 from tracking_visualized.rendering.teams import (
@@ -25,6 +26,10 @@ class PlayerLayer:
 
     Players that are missing from a frame, or whose position is not
     observed, are hidden until they reappear.
+
+    Positions passed to ``update`` are canonical pitch coordinates. ``transform``
+    maps them to the screen and defaults to ``ax.transData``; pass
+    ``pitch_data_transform`` when the pitch is drawn rotated.
     """
 
     def __init__(
@@ -35,11 +40,15 @@ class PlayerLayer:
         *,
         marker_size: float = 10.0,
         zorder: float = 3.0,
+        transform: Transform | None = None,
     ) -> None:
         if marker_size <= 0:
             raise ValueError("marker_size must be positive.")
 
         validate_team_styles(players, team_styles)
+
+        if transform is None:
+            transform = ax.transData
 
         self._players = {player.player_id: player for player in players}
         self._team_ids = tuple(dict.fromkeys(player.team_id for player in players))
@@ -60,6 +69,7 @@ class PlayerLayer:
                 edgecolors=style.edge_color,
                 linewidths=style.edge_width,
                 zorder=zorder,
+                transform=transform,
                 gid=f"players_{team_id}",
             )
 
@@ -81,6 +91,7 @@ class PlayerLayer:
                 ha="center",
                 va="center",
                 zorder=zorder + NUMBER_ZORDER_OFFSET,
+                transform=transform,
                 visible=False,
                 gid=f"player_number_{player.player_id}",
             )
@@ -95,6 +106,7 @@ class PlayerLayer:
         away_style: TeamStyle | None = None,
         marker_size: float = 10.0,
         zorder: float = 3.0,
+        transform: Transform | None = None,
     ) -> "PlayerLayer":
         """Create a layer for all players of a match."""
 
@@ -104,6 +116,7 @@ class PlayerLayer:
             resolve_team_styles(match.teams, home=home_style, away=away_style),
             marker_size=marker_size,
             zorder=zorder,
+            transform=transform,
         )
 
     @property

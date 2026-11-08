@@ -3,9 +3,11 @@ from pydantic import ValidationError
 
 from tracking_visualized.config import (
     AppConfig,
+    PitchOrientation,
     RenderingConfig,
     SequenceConfig,
     VideoConfig,
+    VideoLayoutConfig,
 )
 
 
@@ -87,3 +89,63 @@ def test_video_settings_are_normalized():
     config = VideoConfig(preset="SLOW", codec=" LibX264 ")
 
     assert (config.preset, config.codec) == ("slow", "libx264")
+
+
+def test_default_video_layout_is_a_vertical_pitch_with_tiktok_safe_margins():
+    layout = VideoConfig().layout
+
+    assert layout.orientation == PitchOrientation.VERTICAL
+    assert (layout.margin_top, layout.margin_bottom) == (160, 320)
+    assert (layout.margin_left, layout.margin_right) == (40, 40)
+    assert layout.marker_scale > 0
+    assert layout.text_scale > 0
+
+
+def test_pitch_box_is_the_frame_minus_margins_in_figure_fractions():
+    left, bottom, width, height = VideoConfig().pitch_box
+
+    assert left == pytest.approx(40 / 1080)
+    assert bottom == pytest.approx(320 / 1920)
+    assert width == pytest.approx(1000 / 1080)
+    assert height == pytest.approx(1440 / 1920)
+
+
+def test_pitch_box_follows_custom_margins():
+    layout = VideoLayoutConfig(margin_top=0, margin_bottom=0, margin_left=0, margin_right=0)
+
+    assert VideoConfig(layout=layout).pitch_box == (0.0, 0.0, 1.0, 1.0)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"margin_top": -1},
+        {"margin_left": -1},
+        {"marker_scale": 0},
+        {"text_scale": 0},
+        {"orientation": "diagonal"},
+    ],
+)
+def test_invalid_layout_settings_are_rejected(kwargs):
+    with pytest.raises(ValidationError):
+        VideoLayoutConfig(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [
+        VideoLayoutConfig(margin_left=540, margin_right=540),
+        VideoLayoutConfig(margin_top=960, margin_bottom=960),
+        VideoLayoutConfig(margin_top=2000),
+    ],
+)
+def test_margins_must_leave_room_for_the_pitch(layout):
+    with pytest.raises(ValidationError, match="margins"):
+        VideoConfig(layout=layout)
+
+
+def test_trail_line_width_must_be_positive():
+    assert RenderingConfig().trail_line_width == 2.0
+
+    with pytest.raises(ValidationError):
+        RenderingConfig(trail_line_width=0)

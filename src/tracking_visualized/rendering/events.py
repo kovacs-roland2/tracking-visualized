@@ -6,6 +6,7 @@ from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection
 from matplotlib.text import Text
+from matplotlib.transforms import Transform
 
 from tracking_visualized.domain import (
     Event,
@@ -92,6 +93,10 @@ class EventLayer:
     is visible from ``show_before_seconds`` before the event until
     ``show_after_seconds`` after it, measured on the match time of the frame, and
     hidden otherwise (including in a different period).
+
+    ``transform`` maps the event location to the screen and defaults to
+    ``ax.transData``; pass ``pitch_data_transform`` for a rotated pitch. The banner
+    is positioned relative to the Axes and is never rotated.
     """
 
     def __init__(
@@ -106,6 +111,7 @@ class EventLayer:
         marker_size: float = 18.0,
         marker_zorder: float = 2.5,
         label_zorder: float = 6.0,
+        transform: Transform | None = None,
     ) -> None:
         if show_before_seconds < 0:
             raise ValueError("show_before_seconds must not be negative.")
@@ -117,6 +123,9 @@ class EventLayer:
             raise ValueError("marker_size must be positive.")
 
         style = style or EventStyle()
+
+        if transform is None:
+            transform = ax.transData
 
         self.event = event
         self.shirt_number = shirt_number
@@ -151,6 +160,7 @@ class EventLayer:
             [],
             [],
             zorder=marker_zorder,
+            transform=transform,
             visible=False,
             gid="event_marker",
             **marker_kwargs,
