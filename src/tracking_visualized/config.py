@@ -1,3 +1,4 @@
+from math import inf, nextafter
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -125,7 +126,12 @@ class VideoConfig(BaseModel):
     def figure_size_inches(self) -> tuple[float, float]:
         """Figure size that renders to exactly ``width`` x ``height`` pixels at ``dpi``."""
 
-        return self.width / self.dpi, self.height / self.dpi
+        # Matplotlib truncates inch-to-pixel conversions; round each inch value upward by
+        # one representable float so division/multiplication error cannot lose a pixel.
+        return (
+            nextafter(self.width / self.dpi, inf),
+            nextafter(self.height / self.dpi, inf),
+        )
 
 
 class SequenceConfig(BaseModel):

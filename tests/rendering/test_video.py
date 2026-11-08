@@ -366,6 +366,15 @@ def test_render_video_encodes_a_valid_h264_mp4(tmp_path):
 
 
 @requires_ffmpeg
+def test_render_video_encodes_rounding_sensitive_dimensions(tmp_path):
+    config = VideoConfig(width=58, height=112, fps=10, dpi=100)
+
+    info = render_video(make_animator(frame_count=2), tmp_path / "clip.mp4", config)
+
+    assert (info.width, info.height) == (58, 112)
+
+
+@requires_ffmpeg
 def test_render_video_resizes_the_figure_to_the_video(tmp_path):
     animator = make_animator(frame_count=5)
     animator.fig.set_size_inches(3, 3)
