@@ -171,7 +171,7 @@ class EventLayer:
 
         self.label: Text = ax.text(
             0.5,
-            0.985,
+            1.05,
             self.label_text,
             transform=ax.transAxes,
             ha="center",
