@@ -126,12 +126,18 @@ class VideoConfig(BaseModel):
     def figure_size_inches(self) -> tuple[float, float]:
         """Figure size that renders to exactly ``width`` x ``height`` pixels at ``dpi``."""
 
-        # Matplotlib truncates inch-to-pixel conversions; round each inch value upward by
-        # one representable float so division/multiplication error cannot lose a pixel.
-        return (
-            nextafter(self.width / self.dpi, inf),
-            nextafter(self.height / self.dpi, inf),
-        )
+        width_inches = self.width / self.dpi
+        height_inches = self.height / self.dpi
+
+        # Matplotlib truncates inch-to-pixel conversions, so only nudge values whose
+        # floating-point round trip would otherwise lose a pixel.
+        if int(width_inches * self.dpi) < self.width:
+            width_inches = nextafter(width_inches, inf)
+
+        if int(height_inches * self.dpi) < self.height:
+            height_inches = nextafter(height_inches, inf)
+
+        return width_inches, height_inches
 
 
 class SequenceConfig(BaseModel):
