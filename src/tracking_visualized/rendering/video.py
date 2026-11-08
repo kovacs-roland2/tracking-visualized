@@ -332,7 +332,9 @@ def render_video(
     ffprobe = find_ffprobe(ffmpeg)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    partial = output.with_name(f".{output.stem}.partial{output.suffix}")
+    partial = output.with_name(
+        f".{output.stem}.{os.urandom(16).hex()}.partial{output.suffix}"
+    )
 
     fig = animator.fig
     fig.set_dpi(config.dpi)
