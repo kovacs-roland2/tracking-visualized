@@ -32,7 +32,7 @@ from tracking_visualized.processing import EventSequence  # noqa: E402
 from tracking_visualized.rendering import (  # noqa: E402
     BallLayer,
     EventLayer,
-    EventStyle,
+    OverlayStyle,
     PitchDimensions,
     PitchStyle,
     PlayerLayer,
@@ -346,7 +346,7 @@ def test_marker_scale_enlarges_markers_trails_and_pitch_lines():
     animator = create_video_animator(
         make_match(frames), make_event_sequence(frames), VIDEO, config=base
     )
-    trails, players, ball, event = animator.layers
+    trails, players, ball, event, _overlay = animator.layers
     boundary = next(p for p in animator.fig.axes[0].patches if p.get_gid() == "boundaries")
     scale = LAYOUT.marker_scale
 
@@ -359,14 +359,15 @@ def test_marker_scale_enlarges_markers_trails_and_pitch_lines():
     assert event.marker.get_sizes()[0] > players.markers["home"].get_sizes()[0]
 
 
-def test_text_scale_enlarges_the_event_banner():
+def test_text_scale_enlarges_the_text_overlay():
     frames = (make_frame(0, x=50.0, y=32.0), make_frame(1, x=51.0, y=32.0))
     layout = LAYOUT.model_copy(update={"text_scale": 1.5})
     video = VIDEO.model_copy(update={"layout": layout})
     animator = create_video_animator(make_match(frames), make_event_sequence(frames), video)
-    event = animator.layers[-1]
+    overlay = animator.layers[-1]
 
-    assert event.label.get_fontsize() == pytest.approx(EventStyle().font_size * 1.5)
+    assert overlay.title.get_fontsize() == pytest.approx(OverlayStyle().title_font_size * 1.5)
+    assert overlay.subtitle.get_fontsize() == pytest.approx(OverlayStyle().subtitle_font_size * 1.5)
 
 
 def test_explicit_styles_are_not_scaled():
@@ -376,9 +377,9 @@ def test_explicit_styles_are_not_scaled():
         make_event_sequence(frames),
         VIDEO,
         pitch_style=PitchStyle(line_width=1.0),
-        event_style=EventStyle(font_size=9.0),
+        overlay_style=OverlayStyle(title_font_size=9.0),
     )
     boundary = next(p for p in animator.fig.axes[0].patches if p.get_gid() == "boundaries")
 
     assert boundary.get_linewidth() == 1.0
-    assert animator.layers[-1].label.get_fontsize() == 9.0
+    assert animator.layers[-1].title.get_fontsize() == 9.0

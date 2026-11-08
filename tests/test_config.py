@@ -6,6 +6,7 @@ from tracking_visualized.config import (
     PitchOrientation,
     RenderingConfig,
     SequenceConfig,
+    TextPosition,
     VideoConfig,
     VideoLayoutConfig,
 )
@@ -95,7 +96,7 @@ def test_default_video_layout_is_a_vertical_pitch_with_tiktok_safe_margins():
     layout = VideoConfig().layout
 
     assert layout.orientation == PitchOrientation.VERTICAL
-    assert (layout.margin_top, layout.margin_bottom) == (160, 320)
+    assert (layout.margin_top, layout.margin_bottom) == (320, 320)
     assert (layout.margin_left, layout.margin_right) == (40, 40)
     assert layout.marker_scale > 0
     assert layout.text_scale > 0
@@ -107,11 +108,13 @@ def test_pitch_box_is_the_frame_minus_margins_in_figure_fractions():
     assert left == pytest.approx(40 / 1080)
     assert bottom == pytest.approx(320 / 1920)
     assert width == pytest.approx(1000 / 1080)
-    assert height == pytest.approx(1440 / 1920)
+    assert height == pytest.approx(1280 / 1920)
 
 
 def test_pitch_box_follows_custom_margins():
-    layout = VideoLayoutConfig(margin_top=0, margin_bottom=0, margin_left=0, margin_right=0)
+    layout = VideoLayoutConfig(
+        margin_top=0, margin_bottom=0, margin_left=0, margin_right=0, text_gap=0
+    )
 
     assert VideoConfig(layout=layout).pitch_box == (0.0, 0.0, 1.0, 1.0)
 
@@ -149,3 +152,40 @@ def test_trail_line_width_must_be_positive():
 
     with pytest.raises(ValidationError):
         RenderingConfig(trail_line_width=0)
+
+
+def test_text_anchor_sits_in_the_top_margin_next_to_the_pitch():
+    x, y = VideoConfig().text_anchor
+
+    # Default top margin 320 px, gap 16 px: 304 px below the top of the frame.
+    assert x == pytest.approx(0.5)
+    assert y == pytest.approx(1 - 304 / 1920)
+
+
+def test_text_anchor_in_the_bottom_margin():
+    layout = VideoLayoutConfig(text_position=TextPosition.BOTTOM, margin_bottom=300, text_gap=20)
+    x, y = VideoConfig(layout=layout).text_anchor
+
+    assert x == pytest.approx(0.5)
+    assert y == pytest.approx(280 / 1920)
+
+
+def test_text_anchor_is_centered_on_the_pitch_area():
+    layout = VideoLayoutConfig(margin_left=100, margin_right=20)
+
+    assert VideoConfig(layout=layout).text_anchor[0] == pytest.approx((100 + 1060) / 2 / 1080)
+
+
+def test_text_gap_must_fit_in_the_text_margin():
+    with pytest.raises(ValidationError, match="text_gap"):
+        VideoConfig(layout=VideoLayoutConfig(margin_top=10, text_gap=11))
+
+    with pytest.raises(ValidationError, match="text_gap"):
+        VideoConfig(
+            layout=VideoLayoutConfig(
+                text_position=TextPosition.BOTTOM, margin_bottom=10, text_gap=11
+            )
+        )
+
+    with pytest.raises(ValidationError):
+        VideoLayoutConfig(text_gap=-1)
