@@ -1,6 +1,7 @@
+from math import inf, nextafter
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 DEFAULT_DATA_DIR = Path("data")
 DEFAULT_RAW_DATA_DIR = Path("data/raw")
@@ -35,8 +36,34 @@ class RenderingConfig(BaseModel):
     )
 
 
+H264_PRESETS = (
+    "ultrafast",
+    "superfast",
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
+)
+
+
 class VideoConfig(BaseModel):
-    """Settings controlling generated video."""
+    """Settings controlling generated video.
+
+    Frames are rendered at exactly ``width`` x ``height`` pixels and encoded as
+    H.264 in an MP4 container.
+
+    Attributes:
+        crf: H.264 constant rate factor. Lower means better quality and larger
+            files; 18 is visually lossless for most content, 23 is FFmpeg's default.
+        preset: x264 speed/compression trade-off.
+        dpi: Dots per inch used to turn pixels into Matplotlib figure inches.
+            It changes how large text and lines look relative to the frame.
+        ffmpeg_path: Explicit FFmpeg executable. When omitted it is looked up via
+            the ``FFMPEG_BINARY`` environment variable and ``PATH``.
+    """
 
     width: int = Field(default=1080, gt=0)
     height: int = Field(default=1920, gt=0)
@@ -45,6 +72,13 @@ class VideoConfig(BaseModel):
 
     format: str = "mp4"
     codec: str = "libx264"
+
+    crf: int = Field(default=18, ge=0, le=51)
+    preset: str = "medium"
+
+    dpi: int = Field(default=100, gt=0, le=600)
+
+    ffmpeg_path: Path | None = None
 
     @field_validator("format")
     @classmethod
@@ -56,9 +90,54 @@ class VideoConfig(BaseModel):
 
         return normalized_value
 
+    @field_validator("codec")
+    @classmethod
+    def validate_codec(cls, value: str) -> str:
+        normalized_value = str(value).strip().lower()
+
+        if normalized_value != "libx264":
+            raise ValueError("Only H.264 encoding (libx264) is currently supported.")
+
+        return normalized_value
+
+    @field_validator("preset")
+    @classmethod
+    def validate_preset(cls, value: str) -> str:
+        normalized_value = str(value).strip().lower()
+
+        if normalized_value not in H264_PRESETS:
+            raise ValueError(f"preset must be one of: {', '.join(H264_PRESETS)}.")
+
+        return normalized_value
+
+    @model_validator(mode="after")
+    def validate_even_dimensions(self) -> "VideoConfig":
+        # yuv420p stores chroma at half resolution, so H.264 needs even dimensions.
+        if self.width % 2 or self.height % 2:
+            raise ValueError("Video width and height must be even for H.264 (yuv420p).")
+
+        return self
+
     @property
     def aspect_ratio(self) -> float:
         return self.width / self.height
+
+    @property
+    def figure_size_inches(self) -> tuple[float, float]:
+        """Figure size that renders to exactly ``width`` x ``height`` pixels at ``dpi``."""
+
+        width_inches = self.width / self.dpi
+        height_inches = self.height / self.dpi
+
+        # Matplotlib truncates inch-to-pixel conversions, so only nudge values whose
+        # floating-point round trip would otherwise lose a pixel.
+        if int(width_inches * self.dpi) < self.width:
+            width_inches = nextafter(width_inches, inf)
+
+        if int(height_inches * self.dpi) < self.height:
+            height_inches = nextafter(height_inches, inf)
+
+        return width_inches, height_inches
 
 
 class SequenceConfig(BaseModel):
@@ -111,6 +190,7 @@ class AppConfig(BaseModel):
 
 
 __all__ = [
+    "H264_PRESETS",
     "AppConfig",
     "PathConfig",
     "RenderingConfig",

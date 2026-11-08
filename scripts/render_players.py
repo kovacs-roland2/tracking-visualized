@@ -4,6 +4,7 @@ the sequence to output/sequence.gif using the animation engine.
 
 Scans the whole tracking file twice (once to find the first-half origin frame,
 once to collect positions for the trail window), so it takes about a minute on the full match.
+With --video the same clip is encoded to output/sequence.mp4 (needs FFmpeg).
 """
 
 import argparse
@@ -16,7 +17,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from sample_data import EVENTS_FILE, METADATA_FILE, TRACKING_FILE  # noqa: E402
 
-from tracking_visualized.config import RenderingConfig  # noqa: E402
+from tracking_visualized.config import RenderingConfig, VideoConfig  # noqa: E402
 from tracking_visualized.domain import (  # noqa: E402
     BallPosition,
     CoordinateSystem,
@@ -50,15 +51,18 @@ from tracking_visualized.rendering import (  # noqa: E402
     EventLayer,
     FrameLayer,
     PitchDimensions,
+    PitchStyle,
     PlayerLayer,
     SequenceAnimator,
     TrailLayer,
     draw_pitch,
+    render_video,
     resolve_team_styles,
 )
 
 OUTPUT_FILE = Path("output") / "players.png"
 ANIMATION_FILE = Path("output") / "sequence.gif"
+VIDEO_FILE = Path("output") / "sequence.mp4"
 ANIMATION_DPI = 80
 
 FPS = 25
@@ -99,16 +103,21 @@ def parse_args() -> argparse.Namespace:
         help="Render an animated clip (output/sequence.gif) instead of a single frame.",
     )
     parser.add_argument(
+        "--video",
+        action="store_true",
+        help="Encode the clip as an H.264 MP4 (output/sequence.mp4) with FFmpeg.",
+    )
+    parser.add_argument(
         "--clip-before-seconds",
         type=float,
         default=3.0,
-        help="With --animate: seconds before the event (or --seconds) to start the clip.",
+        help="With --animate/--video: seconds before the event (or --seconds) to start the clip.",
     )
     parser.add_argument(
         "--clip-after-seconds",
         type=float,
         default=2.0,
-        help="With --animate: seconds after the event (or --seconds) to end the clip.",
+        help="With --animate/--video: seconds after the event (or --seconds) to end the clip.",
     )
     return parser.parse_args()
 
@@ -242,7 +251,7 @@ def main() -> None:
     else:
         anchor_frame = origin_frame + round(args.seconds * FPS)
 
-    if args.animate:
+    if args.animate or args.video:
         first_frame = max(origin_frame, anchor_frame - round(args.clip_before_seconds * FPS))
         last_frame = anchor_frame + round(args.clip_after_seconds * FPS)
     else:
@@ -268,7 +277,16 @@ def main() -> None:
     config = RenderingConfig()
     team_styles = resolve_team_styles(teams)
 
-    fig, ax = plt.subplots(figsize=(10.5, 6.8))
+    video_config = VideoConfig(fps=FPS)
+
+    if args.video:
+        # Fill the 1080x1920 frame; the pitch is scaled to full width and centered.
+        fig, ax = plt.subplots(figsize=video_config.figure_size_inches, dpi=video_config.dpi)
+        ax.set_position((0.0, 0.0, 1.0, 1.0))
+        fig.set_facecolor(PitchStyle().pitch_color)
+    else:
+        fig, ax = plt.subplots(figsize=(10.5, 6.8))
+
     draw_pitch(ax, pitch)
 
     layers: list[FrameLayer] = [
@@ -296,8 +314,21 @@ def main() -> None:
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    if args.animate:
+    if args.animate or args.video:
         animator = SequenceAnimator(fig, frames, layers, AnimationSettings(fps=FPS))
+
+        if args.video:
+            info = render_video(animator, VIDEO_FILE, video_config)
+
+            print(f"Encoded {animator.frame_count} frames ({len(frames)} tracking frames).")
+            print(
+                f"{info.codec_name} {info.pixel_format} {info.width}x{info.height} "
+                f"at {info.fps:g} fps, {info.duration_seconds:.2f} s "
+                f"(validated with ffprobe)."
+            )
+            print(f"Saved video to {VIDEO_FILE}")
+            return
+
         animation = animator.build()
         animation.save(ANIMATION_FILE, writer="pillow", fps=FPS, dpi=ANIMATION_DPI)
 
