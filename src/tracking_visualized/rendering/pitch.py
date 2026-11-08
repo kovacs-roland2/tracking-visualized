@@ -4,8 +4,9 @@ from math import isfinite
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.patches import Circle, Rectangle
+from matplotlib.transforms import Affine2D, Transform
 
-from tracking_visualized.config import RenderingConfig
+from tracking_visualized.config import PitchOrientation, RenderingConfig
 from tracking_visualized.domain import CoordinateSystem
 
 
@@ -226,10 +227,47 @@ def _draw_penalty_spots(ax: Axes, dims: PitchDimensions, style: PitchStyle) -> N
     ax.add_patch(_spot((dims.length - dims.penalty_spot_distance, y), style, "penalty_spot_right"))
 
 
+def pitch_view_transform(
+    dimensions: PitchDimensions,
+    orientation: PitchOrientation = PitchOrientation.HORIZONTAL,
+) -> Affine2D:
+    """Map canonical pitch coordinates to the coordinates the axes are drawn in.
+
+    Horizontal pitches are unchanged. A vertical pitch is rotated by 90 degrees
+    counter-clockwise, so the pitch length runs upwards (x becomes the vertical
+    axis) and the left side of the pitch ends up on the left of the screen
+    looking up the pitch. It is a rotation, not a mirror image.
+    """
+
+    if orientation == PitchOrientation.HORIZONTAL:
+        return Affine2D()
+
+    # (x, y) -> (width - y, x)
+    return Affine2D.from_values(0.0, 1.0, -1.0, 0.0, dimensions.width, 0.0)
+
+
+def pitch_data_transform(
+    ax: Axes,
+    dimensions: PitchDimensions,
+    orientation: PitchOrientation = PitchOrientation.HORIZONTAL,
+) -> Transform:
+    """Transform from canonical pitch coordinates to display coordinates.
+
+    Pass it as ``transform`` to the layers so they can keep working with
+    canonical pitch coordinates on a pitch drawn with ``orientation``.
+    """
+
+    if orientation == PitchOrientation.HORIZONTAL:
+        return ax.transData
+
+    return pitch_view_transform(dimensions, orientation) + ax.transData
+
+
 def draw_pitch(
     ax: Axes | None = None,
     dimensions: PitchDimensions | None = None,
     style: PitchStyle | None = None,
+    orientation: PitchOrientation = PitchOrientation.HORIZONTAL,
 ) -> Axes:
     """Draw a football pitch onto a Matplotlib Axes.
 
@@ -237,10 +275,13 @@ def draw_pitch(
         ax: Axes to draw on. A new figure is created when omitted.
         dimensions: Pitch and marking sizes in meters.
         style: Colors, line width and padding.
+        orientation: Whether the pitch length runs along the horizontal or the
+            vertical axis of the Axes.
 
     Returns:
         The Axes containing the pitch, ready for players and ball to be drawn
-        on top using canonical pitch coordinates.
+        on top using canonical pitch coordinates. With a vertical pitch, create
+        the layers with ``transform=pitch_data_transform(ax, dimensions, orientation)``.
     """
 
     dims = dimensions or PitchDimensions()
@@ -248,6 +289,9 @@ def draw_pitch(
 
     if ax is None:
         _, ax = plt.subplots()
+
+    patch_count = len(ax.patches)
+    line_count = len(ax.lines)
 
     _draw_background(ax, dims, style)
     _draw_boundaries(ax, dims, style)
@@ -257,8 +301,18 @@ def draw_pitch(
     _draw_center_circle(ax, dims, style)
     _draw_penalty_spots(ax, dims, style)
 
-    ax.set_xlim(-style.padding, dims.length + style.padding)
-    ax.set_ylim(-style.padding, dims.width + style.padding)
+    if orientation == PitchOrientation.VERTICAL:
+        data_transform = pitch_data_transform(ax, dims, orientation)
+
+        for artist in [*list(ax.patches)[patch_count:], *list(ax.lines)[line_count:]]:
+            artist.set_transform(data_transform)
+
+        ax.set_xlim(-style.padding, dims.width + style.padding)
+        ax.set_ylim(-style.padding, dims.length + style.padding)
+    else:
+        ax.set_xlim(-style.padding, dims.length + style.padding)
+        ax.set_ylim(-style.padding, dims.width + style.padding)
+
     ax.set_aspect("equal")
     ax.set_axis_off()
 
@@ -270,4 +324,6 @@ __all__ = [
     "PitchDimensionsError",
     "PitchStyle",
     "draw_pitch",
+    "pitch_data_transform",
+    "pitch_view_transform",
 ]

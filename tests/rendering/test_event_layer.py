@@ -135,6 +135,13 @@ def test_label_shows_type_number_and_timestamp(ax):
     assert layer.label.get_text() == "SHOT  ·  SAVED  ·  #11  ·  1H 07:49"
 
 
+def test_label_is_positioned_above_the_pitch(ax):
+    layer = EventLayer(ax, make_event())
+
+    assert layer.label.get_position() == (0.5, 1.05)
+    assert layer.label.get_verticalalignment() == "top"
+
+
 def test_label_without_shirt_number_omits_it(ax):
     layer = EventLayer(ax, make_event(ShotOutcome.WIDE))
 

@@ -12,7 +12,7 @@ from pathlib import Path  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
-from tracking_visualized.config import VideoConfig  # noqa: E402
+from tracking_visualized.config import VideoConfig, VideoLayoutConfig  # noqa: E402
 from tracking_visualized.domain import Frame, MatchTime, PeriodType  # noqa: E402
 from tracking_visualized.rendering import (  # noqa: E402
     AnimationSettings,
@@ -34,7 +34,8 @@ from tracking_visualized.rendering.video import (  # noqa: E402
     probe_video,
 )
 
-SMALL = VideoConfig(width=64, height=112, fps=10, dpi=50)
+NO_MARGINS = VideoLayoutConfig(margin_top=0, margin_bottom=0, margin_left=0, margin_right=0)
+SMALL = VideoConfig(width=64, height=112, fps=10, dpi=50, layout=NO_MARGINS)
 
 
 def has_x264() -> bool:
@@ -367,7 +368,7 @@ def test_render_video_encodes_a_valid_h264_mp4(tmp_path):
 
 @requires_ffmpeg
 def test_render_video_encodes_rounding_sensitive_dimensions(tmp_path):
-    config = VideoConfig(width=58, height=112, fps=10, dpi=100)
+    config = VideoConfig(width=58, height=112, fps=10, dpi=100, layout=NO_MARGINS)
 
     info = render_video(make_animator(frame_count=2), tmp_path / "clip.mp4", config)
 

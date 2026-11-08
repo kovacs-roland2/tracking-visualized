@@ -1,10 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from tracking_visualized.config import RenderingConfig, VideoConfig
+from tracking_visualized.config import PitchOrientation, RenderingConfig, VideoConfig
 from tracking_visualized.domain import Match
 from tracking_visualized.processing import EventSequence, SelectedSequence
 from tracking_visualized.rendering.animation import (
@@ -14,7 +14,12 @@ from tracking_visualized.rendering.animation import (
 )
 from tracking_visualized.rendering.ball import BallLayer, BallStyle
 from tracking_visualized.rendering.events import EventLayer, EventStyle
-from tracking_visualized.rendering.pitch import PitchDimensions, PitchStyle, draw_pitch
+from tracking_visualized.rendering.pitch import (
+    PitchDimensions,
+    PitchStyle,
+    draw_pitch,
+    pitch_data_transform,
+)
 from tracking_visualized.rendering.players import PlayerLayer
 from tracking_visualized.rendering.teams import TeamStyle
 from tracking_visualized.rendering.trails import TrailLayer
@@ -43,29 +48,46 @@ def build_sequence_scene(
     away_style: TeamStyle | None = None,
     ball_style: BallStyle | None = None,
     event_style: EventStyle | None = None,
+    orientation: PitchOrientation = PitchOrientation.HORIZONTAL,
 ) -> SequenceScene:
     """Create the pitch and layers for a match sequence.
 
     Layers are returned in drawing order: trails, players, ball and, for an
-    event sequence, the event indicator.
+    event sequence, the event indicator. With a vertical ``orientation`` the pitch
+    and all layers are rotated together; frames still hold canonical coordinates.
     """
 
     config = config or RenderingConfig()
     pitch = PitchDimensions.from_coordinate_system(match.coordinate_system)
 
     fig, ax = plt.subplots(figsize=figsize)
-    draw_pitch(ax, pitch, pitch_style)
+    draw_pitch(ax, pitch, pitch_style, orientation)
+    transform = pitch_data_transform(ax, pitch, orientation)
 
     layers: list[FrameLayer] = [
-        TrailLayer.from_match(ax, match, config, home_style=home_style, away_style=away_style),
+        TrailLayer.from_match(
+            ax,
+            match,
+            config,
+            home_style=home_style,
+            away_style=away_style,
+            transform=transform,
+        ),
         PlayerLayer.from_match(
             ax,
             match,
             home_style=home_style,
             away_style=away_style,
             marker_size=config.player_marker_size,
+            transform=transform,
         ),
-        BallLayer(ax, ball_style, marker_size=config.ball_marker_size, pitch=pitch),
+        BallLayer(
+            ax,
+            ball_style,
+            marker_size=config.ball_marker_size,
+            pitch=pitch,
+            transform=transform,
+        ),
     ]
 
     if isinstance(sequence, EventSequence):
@@ -76,6 +98,7 @@ def build_sequence_scene(
                 sequence.event,
                 style=event_style,
                 marker_size=config.player_marker_size * EVENT_MARKER_SCALE,
+                transform=transform,
             )
         )
 
@@ -103,6 +126,26 @@ def create_sequence_animator(
     return SequenceAnimator(scene.fig, sequence.frames, scene.layers, settings)
 
 
+def apply_video_layout(
+    fig: Figure,
+    ax: Axes,
+    video_config: VideoConfig,
+    pitch_style: PitchStyle | None = None,
+) -> None:
+    """Fit the pitch Axes into the video frame, inside the layout margins.
+
+    The Axes covers the frame minus ``video_config.layout`` margins. Because the
+    pitch keeps its aspect ratio, it is scaled to fit that area and centered in
+    it. The rest of the frame is filled with the pitch color.
+    """
+
+    pitch_style = pitch_style or PitchStyle()
+
+    fig.set_dpi(video_config.dpi)
+    fig.set_facecolor(pitch_style.pitch_color)
+    ax.set_position(video_config.pitch_box)
+
+
 def create_video_animator(
     match: Match,
     sequence: SelectedSequence,
@@ -110,18 +153,45 @@ def create_video_animator(
     *,
     config: RenderingConfig | None = None,
     pitch_style: PitchStyle | None = None,
+    event_style: EventStyle | None = None,
     **scene_kwargs,
 ) -> SequenceAnimator:
     """Build an animator whose figure fills the video frame.
 
-    The figure is sized to ``video_config`` (1080x1920 by default). The pitch is
-    scaled to the full frame width and centered vertically; the rest of the frame
-    uses the pitch color. The frame rate comes from ``video_config``, so the result
-    can be passed straight to ``render_video``.
+    The figure is sized to ``video_config`` (1080x1920 by default) and the pitch is
+    laid out as described by ``video_config.layout``: rotated to run along the tall
+    side of the frame, fitted inside the margins and centered. The layout's
+    ``marker_scale`` enlarges markers, trails and pitch lines relative to ``config``
+    and its ``text_scale`` enlarges the event banner text. Styles passed explicitly
+    (``pitch_style``, ``event_style``) are used as given, without scaling.
+
+    The frame rate comes from ``video_config``, so the result can be passed
+    straight to ``render_video``.
     """
 
     video_config = video_config or VideoConfig()
-    pitch_style = pitch_style or PitchStyle()
+    layout = video_config.layout
+
+    config = config or RenderingConfig()
+    config = config.model_copy(
+        update={
+            "player_marker_size": config.player_marker_size * layout.marker_scale,
+            "ball_marker_size": config.ball_marker_size * layout.marker_scale,
+            "trail_line_width": config.trail_line_width * layout.marker_scale,
+        }
+    )
+
+    if pitch_style is None:
+        default_style = PitchStyle()
+        pitch_style = replace(
+            default_style, line_width=default_style.line_width * layout.marker_scale
+        )
+
+    if event_style is None:
+        default_event_style = EventStyle()
+        event_style = replace(
+            default_event_style, font_size=default_event_style.font_size * layout.text_scale
+        )
 
     scene = build_sequence_scene(
         match,
@@ -129,12 +199,12 @@ def create_video_animator(
         config=config,
         figsize=video_config.figure_size_inches,
         pitch_style=pitch_style,
+        event_style=event_style,
+        orientation=layout.orientation,
         **scene_kwargs,
     )
 
-    scene.fig.set_dpi(video_config.dpi)
-    scene.fig.set_facecolor(pitch_style.pitch_color)
-    scene.ax.set_position((0.0, 0.0, 1.0, 1.0))
+    apply_video_layout(scene.fig, scene.ax, video_config, pitch_style)
 
     return SequenceAnimator(
         scene.fig,
@@ -146,6 +216,7 @@ def create_video_animator(
 
 __all__ = [
     "SequenceScene",
+    "apply_video_layout",
     "build_sequence_scene",
     "create_sequence_animator",
     "create_video_animator",

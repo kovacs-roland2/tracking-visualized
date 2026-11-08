@@ -7,6 +7,7 @@ from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
+from matplotlib.transforms import Transform
 
 from tracking_visualized.config import RenderingConfig
 from tracking_visualized.domain import Frame, Match, PeriodType, Player
@@ -36,6 +37,9 @@ class TrailLayer:
     History is cleared automatically when frames go backwards, when the match
     period changes, and can be cleared explicitly with ``reset``.
     Updating again with the same frame index does not add a duplicate point.
+
+    ``transform`` maps pitch coordinates to the screen and defaults to
+    ``ax.transData``; pass ``pitch_data_transform`` for a rotated pitch.
     """
 
     def __init__(
@@ -49,6 +53,7 @@ class TrailLayer:
         max_alpha: float = 0.6,
         max_gap_frames: int = DEFAULT_MAX_GAP_FRAMES,
         zorder: float = 2.0,
+        transform: Transform | None = None,
     ) -> None:
         if duration_seconds < 0:
             raise ValueError("duration_seconds must not be negative.")
@@ -63,6 +68,9 @@ class TrailLayer:
             raise ValueError("max_gap_frames must be at least 1.")
 
         validate_team_styles(players, team_styles)
+
+        if transform is None:
+            transform = ax.transData
 
         self.duration_seconds = duration_seconds
 
@@ -89,6 +97,7 @@ class TrailLayer:
                 linewidths=line_width,
                 capstyle="round",
                 zorder=zorder,
+                transform=transform,
                 gid=f"trails_{team_id}",
             )
             ax.add_collection(collection, autolim=False)
@@ -107,12 +116,14 @@ class TrailLayer:
     ) -> "TrailLayer":
         """Create a layer for all players of a match.
 
-        Trail duration comes from ``config`` (RenderingConfig defaults when
-        omitted). Expiry is measured against source timestamps, independently
-        of the output rendering frame rate.
+        Trail duration and line width come from ``config`` (RenderingConfig
+        defaults when omitted); keyword arguments override them. Expiry is
+        measured against source timestamps, independently of the output
+        rendering frame rate.
         """
 
         config = config or RenderingConfig()
+        kwargs.setdefault("line_width", config.trail_line_width)
 
         return cls(
             ax,

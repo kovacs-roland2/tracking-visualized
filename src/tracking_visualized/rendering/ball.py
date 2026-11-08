@@ -4,6 +4,7 @@ import numpy as np
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection
+from matplotlib.transforms import Transform
 
 from tracking_visualized.domain import BallPosition, Frame
 from tracking_visualized.rendering._validation import validate_colors
@@ -37,6 +38,9 @@ class BallLayer:
     outside the pitch (when ``pitch`` is given). The ball may legitimately leave
     the pitch for throw-ins, corners and goal kicks, so the margin only filters
     clearly invalid coordinates.
+
+    ``transform`` maps pitch coordinates to the screen and defaults to
+    ``ax.transData``; pass ``pitch_data_transform`` for a rotated pitch.
     """
 
     def __init__(
@@ -48,6 +52,7 @@ class BallLayer:
         pitch: PitchDimensions | None = None,
         out_of_bounds_margin: float = DEFAULT_OUT_OF_BOUNDS_MARGIN,
         zorder: float = 4.0,
+        transform: Transform | None = None,
     ) -> None:
         if marker_size <= 0:
             raise ValueError("marker_size must be positive.")
@@ -56,6 +61,9 @@ class BallLayer:
             raise ValueError("out_of_bounds_margin must not be negative.")
 
         style = style or BallStyle()
+
+        if transform is None:
+            transform = ax.transData
 
         self._pitch = pitch
         self._margin = out_of_bounds_margin
@@ -71,6 +79,7 @@ class BallLayer:
             edgecolors=style.edge_color,
             linewidths=style.edge_width,
             zorder=zorder,
+            transform=transform,
             gid="ball",
         )
 

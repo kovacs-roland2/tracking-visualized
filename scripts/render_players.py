@@ -4,7 +4,8 @@ the sequence to output/sequence.gif using the animation engine.
 
 Scans the whole tracking file twice (once to find the first-half origin frame,
 once to collect positions for the trail window), so it takes about a minute on the full match.
-With --video the same clip is encoded to output/sequence.mp4 (needs FFmpeg).
+With --video the same clip is encoded to output/sequence.mp4 (needs FFmpeg) in the 1080x1920
+vertical TikTok layout: the pitch is rotated and fitted inside the layout margins.
 """
 
 import argparse
@@ -17,7 +18,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from sample_data import EVENTS_FILE, METADATA_FILE, TRACKING_FILE  # noqa: E402
 
-from tracking_visualized.config import RenderingConfig, VideoConfig  # noqa: E402
+from tracking_visualized.config import (  # noqa: E402
+    PitchOrientation,
+    RenderingConfig,
+    VideoConfig,
+)
 from tracking_visualized.domain import (  # noqa: E402
     BallPosition,
     CoordinateSystem,
@@ -49,13 +54,16 @@ from tracking_visualized.rendering import (  # noqa: E402
     AnimationSettings,
     BallLayer,
     EventLayer,
+    EventStyle,
     FrameLayer,
     PitchDimensions,
     PitchStyle,
     PlayerLayer,
     SequenceAnimator,
     TrailLayer,
+    apply_video_layout,
     draw_pitch,
+    pitch_data_transform,
     render_video,
     resolve_team_styles,
 )
@@ -278,16 +286,26 @@ def main() -> None:
     team_styles = resolve_team_styles(teams)
 
     video_config = VideoConfig(fps=FPS)
+    layout = video_config.layout
+
+    # The preview and GIF use a landscape figure; the video uses the vertical TikTok layout.
+    orientation = layout.orientation if args.video else PitchOrientation.HORIZONTAL
+    marker_scale = layout.marker_scale if args.video else 1.6
+    pitch_style = PitchStyle(
+        line_width=PitchStyle().line_width * (marker_scale if args.video else 1)
+    )
+    event_style = EventStyle(
+        font_size=EventStyle().font_size * (layout.text_scale if args.video else 1)
+    )
 
     if args.video:
-        # Fill the 1080x1920 frame; the pitch is scaled to full width and centered.
         fig, ax = plt.subplots(figsize=video_config.figure_size_inches, dpi=video_config.dpi)
-        ax.set_position((0.0, 0.0, 1.0, 1.0))
-        fig.set_facecolor(PitchStyle().pitch_color)
+        apply_video_layout(fig, ax, video_config, pitch_style)
     else:
         fig, ax = plt.subplots(figsize=(10.5, 6.8))
 
-    draw_pitch(ax, pitch)
+    draw_pitch(ax, pitch, pitch_style, orientation)
+    transform = pitch_data_transform(ax, pitch, orientation)
 
     layers: list[FrameLayer] = [
         TrailLayer(
@@ -295,10 +313,22 @@ def main() -> None:
             players,
             team_styles,
             duration_seconds=args.trail_seconds,
-            line_width=config.player_marker_size * 0.3,
+            line_width=config.trail_line_width * marker_scale,
+            transform=transform,
         ),
-        PlayerLayer(ax, players, team_styles, marker_size=config.player_marker_size * 1.6),
-        BallLayer(ax, marker_size=config.ball_marker_size * 1.6, pitch=pitch),
+        PlayerLayer(
+            ax,
+            players,
+            team_styles,
+            marker_size=config.player_marker_size * marker_scale,
+            transform=transform,
+        ),
+        BallLayer(
+            ax,
+            marker_size=config.ball_marker_size * marker_scale,
+            pitch=pitch,
+            transform=transform,
+        ),
     ]
 
     event_layer: EventLayer | None = None
@@ -308,7 +338,9 @@ def main() -> None:
             ax,
             event,
             shirt_number=shot.shirt_number,
-            marker_size=config.player_marker_size * 2.4,
+            style=event_style,
+            marker_size=config.player_marker_size * 1.5 * marker_scale,
+            transform=transform,
         )
         layers.append(event_layer)
 

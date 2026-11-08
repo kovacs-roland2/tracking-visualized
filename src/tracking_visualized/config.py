@@ -1,3 +1,4 @@
+from enum import StrEnum
 from math import inf, nextafter
 from pathlib import Path
 
@@ -18,6 +19,13 @@ class PathConfig(BaseModel):
     output_dir: Path = DEFAULT_OUTPUT_DIR
 
 
+class PitchOrientation(StrEnum):
+    """Direction in which the pitch length runs on screen."""
+
+    HORIZONTAL = "horizontal"
+    VERTICAL = "vertical"
+
+
 class RenderingConfig(BaseModel):
     """Settings controlling the 2D match visualization."""
 
@@ -34,6 +42,7 @@ class RenderingConfig(BaseModel):
         ge=0,
         le=10,
     )
+    trail_line_width: float = Field(default=2.0, gt=0)
 
 
 H264_PRESETS = (
@@ -47,6 +56,37 @@ H264_PRESETS = (
     "slower",
     "veryslow",
 )
+
+
+class VideoLayoutConfig(BaseModel):
+    """Where the pitch goes in the video frame and how large its elements are.
+
+    The pitch is fitted into the frame minus the margins, keeping its aspect
+    ratio and centered in what is left. The default margins keep it clear of
+    TikTok's interface (caption and buttons at the bottom, profile bar at the top)
+    and leave room for text overlays.
+
+    Attributes:
+        orientation: ``VERTICAL`` rotates the pitch by 90 degrees so its length runs
+            along the tall side of the frame.
+        margin_top: Free space above the pitch, in pixels.
+        margin_bottom: Free space below the pitch, in pixels.
+        margin_left: Free space left of the pitch, in pixels.
+        margin_right: Free space right of the pitch, in pixels.
+        marker_scale: Multiplier for player and ball markers, shirt numbers, trail
+            width and pitch line width, relative to ``RenderingConfig``.
+        text_scale: Multiplier for the font size of the event banner.
+    """
+
+    orientation: PitchOrientation = PitchOrientation.VERTICAL
+
+    margin_top: int = Field(default=160, ge=0)
+    margin_bottom: int = Field(default=320, ge=0)
+    margin_left: int = Field(default=40, ge=0)
+    margin_right: int = Field(default=40, ge=0)
+
+    marker_scale: float = Field(default=2.4, gt=0, le=10)
+    text_scale: float = Field(default=2.0, gt=0, le=10)
 
 
 class VideoConfig(BaseModel):
@@ -79,6 +119,8 @@ class VideoConfig(BaseModel):
     dpi: int = Field(default=100, gt=0, le=600)
 
     ffmpeg_path: Path | None = None
+
+    layout: VideoLayoutConfig = Field(default_factory=VideoLayoutConfig)
 
     @field_validator("format")
     @classmethod
@@ -118,6 +160,18 @@ class VideoConfig(BaseModel):
 
         return self
 
+    @model_validator(mode="after")
+    def validate_margins(self) -> "VideoConfig":
+        layout = self.layout
+
+        if layout.margin_left + layout.margin_right >= self.width:
+            raise ValueError("Horizontal margins must leave room for the pitch.")
+
+        if layout.margin_top + layout.margin_bottom >= self.height:
+            raise ValueError("Vertical margins must leave room for the pitch.")
+
+        return self
+
     @property
     def aspect_ratio(self) -> float:
         return self.width / self.height
@@ -138,6 +192,23 @@ class VideoConfig(BaseModel):
             height_inches = nextafter(height_inches, inf)
 
         return width_inches, height_inches
+
+    @property
+    def pitch_box(self) -> tuple[float, float, float, float]:
+        """Area for the pitch as ``(left, bottom, width, height)`` figure fractions.
+
+        This is the frame minus the layout margins. Matplotlib's origin is at the
+        bottom left, so ``margin_bottom`` sets ``bottom``.
+        """
+
+        layout = self.layout
+
+        return (
+            layout.margin_left / self.width,
+            layout.margin_bottom / self.height,
+            (self.width - layout.margin_left - layout.margin_right) / self.width,
+            (self.height - layout.margin_top - layout.margin_bottom) / self.height,
+        )
 
 
 class SequenceConfig(BaseModel):
@@ -193,9 +264,11 @@ __all__ = [
     "H264_PRESETS",
     "AppConfig",
     "PathConfig",
+    "PitchOrientation",
     "RenderingConfig",
     "SequenceConfig",
     "SynchronizationConfig",
     "TrackingRepairConfig",
     "VideoConfig",
+    "VideoLayoutConfig",
 ]

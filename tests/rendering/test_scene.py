@@ -185,7 +185,7 @@ def test_event_sequence_animation_end_to_end(tmp_path):
     assert (tmp_path / "scene.gif").stat().st_size > 0
 
 
-def test_video_animator_fills_the_video_frame():
+def test_video_animator_uses_a_full_size_figure():
     frames = make_frames()
     video = VideoConfig(width=540, height=960, fps=20, dpi=50)
 
@@ -193,23 +193,20 @@ def test_video_animator_fills_the_video_frame():
         make_match(frames), make_range_sequence(frames), video, config=RenderingConfig(fps=25)
     )
     fig = animator.fig
-    ax = fig.axes[0]
 
     assert tuple(fig.get_size_inches() * fig.get_dpi()) == (540, 960)
     # The frame rate comes from the video config, not from RenderingConfig.
     assert animator.settings.fps == 20
     assert animator.frame_count == 41  # 2 s of tracking at 20 fps
-
-    # The axes may use the whole figure; equal aspect then shrinks the pitch to full
-    # frame width and centers it vertically.
-    assert ax.get_position(original=True).bounds == (0.0, 0.0, 1.0, 1.0)
-
-    x, y, width, height = ax.get_position().bounds
-
-    assert (x, width) == (pytest.approx(0.0), pytest.approx(1.0))
-    assert y == pytest.approx((1 - height) / 2)
-    assert 0 < height < 1
     assert fig.get_facecolor()[:3] == pytest.approx((0x3A / 255, 0x7D / 255, 0x44 / 255))
+
+
+def test_video_animator_default_canvas_is_1080_by_1920():
+    frames = make_frames()
+    animator = create_video_animator(make_match(frames), make_range_sequence(frames))
+    animator.fig.canvas.draw()
+
+    assert tuple(animator.fig.canvas.get_width_height()) == (1080, 1920)
 
 
 def test_video_animator_includes_the_event_layer_for_event_sequences():
