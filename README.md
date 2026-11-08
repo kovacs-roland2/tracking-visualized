@@ -76,6 +76,19 @@ uvx --from huggingface-hub hf download pysport/idsse-data \
   --local-dir data/raw/dfl/J03WMX
 ```
 
+## Rendering Video
+
+Animations are encoded as **H.264 MP4** (`yuv420p`, 1080x1920 at 25 fps by default) with [FFmpeg](https://ffmpeg.org/). FFmpeg, including `ffprobe` and the `libx264` encoder, must be installed separately:
+
+```bash
+brew install ffmpeg        # macOS
+sudo apt install ffmpeg    # Debian / Ubuntu
+```
+
+```bash
+uv run python scripts/render_players.py --video
+```
+
 ## Development
 
 ### Requirements

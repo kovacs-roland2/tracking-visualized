@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from tracking_visualized.config import RenderingConfig
+from tracking_visualized.config import RenderingConfig, VideoConfig
 from tracking_visualized.domain import Match
 from tracking_visualized.processing import EventSequence, SelectedSequence
 from tracking_visualized.rendering.animation import (
@@ -103,8 +103,50 @@ def create_sequence_animator(
     return SequenceAnimator(scene.fig, sequence.frames, scene.layers, settings)
 
 
+def create_video_animator(
+    match: Match,
+    sequence: SelectedSequence,
+    video_config: VideoConfig | None = None,
+    *,
+    config: RenderingConfig | None = None,
+    pitch_style: PitchStyle | None = None,
+    **scene_kwargs,
+) -> SequenceAnimator:
+    """Build an animator whose figure fills the video frame.
+
+    The figure is sized to ``video_config`` (1080x1920 by default). The pitch is
+    scaled to the full frame width and centered vertically; the rest of the frame
+    uses the pitch color. The frame rate comes from ``video_config``, so the result
+    can be passed straight to ``render_video``.
+    """
+
+    video_config = video_config or VideoConfig()
+    pitch_style = pitch_style or PitchStyle()
+
+    scene = build_sequence_scene(
+        match,
+        sequence,
+        config=config,
+        figsize=video_config.figure_size_inches,
+        pitch_style=pitch_style,
+        **scene_kwargs,
+    )
+
+    scene.fig.set_dpi(video_config.dpi)
+    scene.fig.set_facecolor(pitch_style.pitch_color)
+    scene.ax.set_position((0.0, 0.0, 1.0, 1.0))
+
+    return SequenceAnimator(
+        scene.fig,
+        sequence.frames,
+        scene.layers,
+        AnimationSettings(fps=video_config.fps),
+    )
+
+
 __all__ = [
     "SequenceScene",
     "build_sequence_scene",
     "create_sequence_animator",
+    "create_video_animator",
 ]
