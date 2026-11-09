@@ -228,7 +228,7 @@ def test_lines_do_not_overlap_for_any_font_size(fig):
         assert chip_box.y1 <= title.y0 + 1e-6
 
 
-def test_overlay_is_always_visible_and_returns_its_artists(fig):
+def test_overlay_is_always_visible_and_returns_no_changed_artists(fig):
     overlay = make_overlay(fig)
     frame = Frame(
         frame_index=0,
@@ -237,7 +237,7 @@ def test_overlay_is_always_visible_and_returns_its_artists(fig):
         ball_position=None,
     )
 
-    assert overlay.update(frame) == [overlay.subtitle, overlay.title]
+    assert overlay.update(frame) == []
     assert all(artist.get_visible() for artist in overlay.artists)
 
 

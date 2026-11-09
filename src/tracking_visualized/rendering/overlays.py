@@ -351,9 +351,9 @@ class EventOverlay:
             )
 
     def update(self, frame: Frame) -> list[Artist]:
-        """Return the overlay artists; the text does not change between frames."""
+        """Leave the static figure-level overlay in the background during animation."""
 
-        return self.artists
+        return []
 
 
 __all__ = [
