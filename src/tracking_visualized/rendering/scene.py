@@ -14,7 +14,11 @@ from tracking_visualized.rendering.animation import (
 )
 from tracking_visualized.rendering.ball import BallLayer, BallStyle
 from tracking_visualized.rendering.events import EventLayer, EventStyle
-from tracking_visualized.rendering.overlays import EventOverlay, OverlayStyle
+from tracking_visualized.rendering.overlays import (
+    EventOverlay,
+    OverlayLayoutError,
+    OverlayStyle,
+)
 from tracking_visualized.rendering.pitch import (
     PitchDimensions,
     PitchStyle,
@@ -175,6 +179,11 @@ def create_video_animator(
 
     The frame rate comes from ``video_config``, so the result can be passed
     straight to ``render_video``.
+
+    Raises:
+        OverlayLayoutError: If the event text does not fit in its margin. The video
+            would otherwise have no visible event text, so this is an error rather
+            than a silent fallback.
     """
 
     video_config = video_config or VideoConfig()
@@ -221,15 +230,20 @@ def create_video_animator(
     layers = scene.layers
 
     if isinstance(sequence, EventSequence):
-        overlay = EventOverlay.from_match(
-            scene.fig,
-            match,
-            sequence.event,
-            video_config,
-            home_style=scene_kwargs.get("home_style"),
-            away_style=scene_kwargs.get("away_style"),
-            style=overlay_style,
-        )
+        try:
+            overlay = EventOverlay.from_match(
+                scene.fig,
+                match,
+                sequence.event,
+                video_config,
+                home_style=scene_kwargs.get("home_style"),
+                away_style=scene_kwargs.get("away_style"),
+                style=overlay_style,
+            )
+        except OverlayLayoutError:
+            plt.close(scene.fig)
+            raise
+
         layers = (*layers, overlay)
 
     return SequenceAnimator(

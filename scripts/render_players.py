@@ -58,6 +58,7 @@ from tracking_visualized.rendering import (  # noqa: E402
     EventLayer,
     EventOverlay,
     FrameLayer,
+    OverlayLayoutError,
     OverlayStyle,
     PitchDimensions,
     PitchStyle,
@@ -354,18 +355,23 @@ def main() -> None:
         if args.video:
             # In the video the event text sits in the top margin instead of over the pitch.
             team = next(team for team in teams if team.team_id == event.team_id)
-            layers.append(
-                EventOverlay(
-                    fig,
-                    event,
-                    anchor=video_config.text_anchor,
-                    position=layout.text_position,
-                    team=team,
-                    team_style=team_styles[team.team_id],
-                    shirt_number=shot.shirt_number,
-                    style=overlay_style,
-                )
+            overlay = EventOverlay(
+                fig,
+                event,
+                anchor=video_config.text_anchor,
+                position=layout.text_position,
+                team=team,
+                team_style=team_styles[team.team_id],
+                shirt_number=shot.shirt_number,
+                style=overlay_style,
             )
+
+            try:
+                overlay.validate_fit(video_config)
+            except OverlayLayoutError as error:
+                raise SystemExit(str(error)) from error
+
+            layers.append(overlay)
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 

@@ -29,6 +29,7 @@ from tracking_visualized.rendering import (  # noqa: E402
     DEFAULT_AWAY_STYLE,
     DEFAULT_HOME_STYLE,
     EventOverlay,
+    OverlayLayoutError,
     OverlayStyle,
     TeamStyle,
     shorten_text,
@@ -323,3 +324,121 @@ def test_from_match_places_the_overlay_in_the_configured_margin(fig):
 def test_invalid_overlay_styles_are_rejected(kwargs):
     with pytest.raises(ValueError):
         OverlayStyle(**kwargs)
+
+
+# --- fit check --------------------------------------------------------------------------------
+
+
+def video_figure(config: VideoConfig):
+    return plt.figure(figsize=config.figure_size_inches, dpi=config.dpi)
+
+
+def layout_config(width=1080, height=1920, dpi=100, **layout) -> VideoConfig:
+    layout.setdefault("margin_left", 0)
+    layout.setdefault("margin_right", 0)
+
+    return VideoConfig(width=width, height=height, dpi=dpi, layout=VideoLayoutConfig(**layout))
+
+
+def test_card_that_fits_the_margin_is_accepted():
+    config = layout_config(margin_top=320, margin_bottom=320, text_gap=16)
+    fig = video_figure(config)
+
+    overlay = EventOverlay.from_match(fig, make_match(), make_event(), config)
+
+    assert overlay.window_extent().y1 <= config.height
+
+
+def test_card_in_a_too_small_top_margin_is_rejected():
+    config = layout_config(margin_top=16, margin_bottom=320, text_gap=16)
+    fig = video_figure(config)
+
+    with pytest.raises(OverlayLayoutError, match="top margin"):
+        EventOverlay.from_match(fig, make_match(), make_event(), config)
+
+
+def test_card_in_a_too_small_bottom_margin_is_rejected():
+    config = layout_config(
+        margin_top=320, margin_bottom=16, text_gap=16, text_position=TextPosition.BOTTOM
+    )
+    fig = video_figure(config)
+
+    with pytest.raises(OverlayLayoutError, match="bottom margin"):
+        EventOverlay.from_match(fig, make_match(), make_event(), config)
+
+
+def test_error_reports_needed_and_free_space():
+    config = layout_config(margin_top=60, margin_bottom=320, text_gap=10)
+    fig = video_figure(config)
+
+    with pytest.raises(OverlayLayoutError) as error:
+        EventOverlay.from_match(fig, make_match(), make_event(), config)
+
+    assert "50 px are free" in str(error.value)
+    assert "60 px margin minus a 10 px gap" in str(error.value)
+
+
+def test_rejected_overlay_is_removed_from_the_figure():
+    config = layout_config(margin_top=16, margin_bottom=320, text_gap=16)
+    fig = video_figure(config)
+
+    with pytest.raises(OverlayLayoutError):
+        EventOverlay.from_match(fig, make_match(), make_event(), config)
+
+    assert fig.texts == []
+    assert fig.artists == []
+
+
+def test_the_gap_counts_against_the_margin():
+    needed = (
+        EventOverlay.from_match(
+            video_figure(layout_config(margin_top=400, text_gap=0)),
+            make_match(),
+            make_event(),
+            layout_config(margin_top=400, text_gap=0),
+        )
+        .window_extent()
+        .height
+    )
+    margin = int(needed) + 4
+
+    fits = layout_config(margin_top=margin, text_gap=0)
+    EventOverlay.from_match(video_figure(fits), make_match(), make_event(), fits)
+
+    too_tight = layout_config(margin_top=margin, text_gap=8)
+
+    with pytest.raises(OverlayLayoutError):
+        EventOverlay.from_match(video_figure(too_tight), make_match(), make_event(), too_tight)
+
+
+def test_fit_depends_on_the_dpi():
+    # The same pixel margin: points shrink at a lower DPI, so the card needs fewer pixels.
+    tight = {"margin_top": 110, "margin_bottom": 110, "text_gap": 10}
+    style = OverlayStyle(title_font_size=40.0, subtitle_font_size=26.0, line_gap=12.0)
+
+    high = layout_config(dpi=100, **tight)
+
+    with pytest.raises(OverlayLayoutError):
+        EventOverlay.from_match(video_figure(high), make_match(), make_event(), high, style=style)
+
+    low = layout_config(width=540, height=960, dpi=50, **tight)
+    EventOverlay.from_match(video_figure(low), make_match(), make_event(), low, style=style)
+
+
+def test_text_wider_than_the_frame_is_rejected():
+    config = layout_config(width=540, height=960, dpi=50, margin_top=300, margin_bottom=300)
+    style = OverlayStyle(title_font_size=90.0)
+
+    with pytest.raises(OverlayLayoutError, match="wide"):
+        EventOverlay.from_match(
+            video_figure(config), make_match(), make_event(), config, style=style
+        )
+
+
+def test_window_extent_covers_title_and_chip(fig):
+    overlay = make_overlay(fig)
+    box = overlay.window_extent()
+    chip = overlay.subtitle.get_bbox_patch().get_window_extent()
+
+    assert box.y0 <= chip.y0 and box.y1 >= extent(fig, overlay.title).y1
+    assert box.x0 <= chip.x0 and box.x1 >= chip.x1

@@ -22,6 +22,7 @@ from tracking_visualized.rendering.events import (
 )
 from tracking_visualized.rendering.overlays import (
     EventOverlay,
+    OverlayLayoutError,
     OverlayStyle,
     shorten_text,
 )
@@ -73,6 +74,7 @@ __all__ = [
     "EventOverlay",
     "EventStyle",
     "FFmpegNotFoundError",
+    "OverlayLayoutError",
     "OverlayStyle",
     "FrameLayer",
     "PitchDimensions",

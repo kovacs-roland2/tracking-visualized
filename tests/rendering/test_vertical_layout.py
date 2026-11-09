@@ -28,10 +28,11 @@ from tracking_visualized.domain import (  # noqa: E402
     Team,
     TeamSide,
 )
-from tracking_visualized.processing import EventSequence  # noqa: E402
+from tracking_visualized.processing import EventSequence, TimeRangeSequence  # noqa: E402
 from tracking_visualized.rendering import (  # noqa: E402
     BallLayer,
     EventLayer,
+    OverlayLayoutError,
     OverlayStyle,
     PitchDimensions,
     PitchStyle,
@@ -280,7 +281,7 @@ def test_trail_line_width_comes_from_rendering_config():
 # --- video layout -----------------------------------------------------------------------------
 
 LAYOUT = VideoLayoutConfig(
-    margin_top=80, margin_bottom=160, margin_left=20, margin_right=20, marker_scale=2.0
+    margin_top=120, margin_bottom=120, margin_left=20, margin_right=20, marker_scale=2.0
 )
 VIDEO = VideoConfig(width=540, height=960, dpi=50, layout=LAYOUT)
 
@@ -303,7 +304,7 @@ def test_video_animator_places_the_pitch_inside_the_margins_and_centers_it():
     # The configured box is 500 x 720 px of the 540 x 960 px frame.
     left, bottom, width, height = ax.get_position(original=True).bounds
 
-    assert (left, bottom) == pytest.approx((20 / 540, 160 / 960))
+    assert (left, bottom) == pytest.approx((20 / 540, 120 / 960))
     assert (width, height) == pytest.approx((500 / 540, 720 / 960))
 
     # The 70 x 106 m padded pitch is height-limited: 720 px tall, ~475 px wide, centered.
@@ -314,7 +315,7 @@ def test_video_animator_places_the_pitch_inside_the_margins_and_centers_it():
     assert active_px[1] == pytest.approx(720)
     assert active_px[0] == pytest.approx(720 * view_width / view_height)
     assert active.x0 * 540 == pytest.approx((540 - active_px[0]) / 2)
-    assert active.y0 * 960 == pytest.approx(160)
+    assert active.y0 * 960 == pytest.approx(120)
 
 
 def test_video_pitch_never_enters_the_margins():
@@ -327,8 +328,8 @@ def test_video_pitch_never_enters_the_margins():
 
     assert box.x0 >= 20 - 1e-6
     assert box.x1 <= 540 - 20 + 1e-6
-    assert box.y0 >= 160 - 1e-6
-    assert box.y1 <= 960 - 80 + 1e-6
+    assert box.y0 >= 120 - 1e-6
+    assert box.y1 <= 960 - 120 + 1e-6
 
 
 def test_horizontal_video_layout_is_supported():
@@ -383,3 +384,25 @@ def test_explicit_styles_are_not_scaled():
 
     assert boundary.get_linewidth() == 1.0
     assert animator.layers[-1].title.get_fontsize() == 9.0
+
+
+def test_video_animator_rejects_a_margin_too_small_for_the_event_text():
+    frames = (make_frame(0, x=50.0, y=32.0), make_frame(1, x=51.0, y=32.0))
+    layout = LAYOUT.model_copy(update={"margin_top": 16, "text_gap": 16})
+    video = VIDEO.model_copy(update={"layout": layout})
+    open_figures = set(plt.get_fignums())
+
+    with pytest.raises(OverlayLayoutError, match="top margin"):
+        create_video_animator(make_match(frames), make_event_sequence(frames), video)
+
+    # The half-built figure is not left behind.
+    assert set(plt.get_fignums()) == open_figures
+
+
+def test_small_margins_are_fine_without_an_event():
+    frames = (make_frame(0, x=50.0, y=32.0), make_frame(1, x=51.0, y=32.0))
+    layout = LAYOUT.model_copy(update={"margin_top": 16, "text_gap": 16})
+    video = VIDEO.model_copy(update={"layout": layout})
+    sequence = TimeRangeSequence(frames=frames, start_time=frames[0].time, end_time=frames[-1].time)
+
+    assert create_video_animator(make_match(frames), sequence, video).frame_count > 0

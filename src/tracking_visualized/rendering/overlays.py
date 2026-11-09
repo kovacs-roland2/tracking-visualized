@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from matplotlib.artist import Artist
 from matplotlib.figure import Figure
 from matplotlib.text import Annotation, Text
-from matplotlib.transforms import offset_copy
+from matplotlib.transforms import Bbox, offset_copy
 
 from tracking_visualized.config import TextPosition, VideoConfig
 from tracking_visualized.domain import Event, Frame, Match, Team
@@ -17,6 +17,11 @@ from tracking_visualized.rendering.events import (
 from tracking_visualized.rendering.teams import TeamStyle, resolve_team_styles
 
 ELLIPSIS = "…"
+FIT_TOLERANCE_PIXELS = 1.0
+
+
+class OverlayLayoutError(ValueError):
+    """Raised when the event text does not fit in the margin reserved for it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +105,10 @@ class EventOverlay:
 
     The overlay is part of the figure, not of the pitch Axes. Artists are created once
     and the overlay is visible for the whole animation.
+
+    Font sizes are in points, so the space the text needs in pixels depends on the
+    figure's DPI. ``validate_fit`` measures the rendered card against a video layout;
+    ``from_match`` calls it.
     """
 
     def __init__(
@@ -116,6 +125,7 @@ class EventOverlay:
     ) -> None:
         style = style or OverlayStyle()
 
+        self.fig = fig
         self.event = event
         self.team = team
         self.shirt_number = shirt_number
@@ -214,7 +224,12 @@ class EventOverlay:
     ) -> "EventOverlay":
         """Create an overlay, looking up the team and shirt number of the event.
 
-        The anchor and the margin come from ``video_config``.
+        The anchor and the margin come from ``video_config``, and the figure must have
+        the video's size and DPI (see ``apply_video_layout``).
+
+        Raises:
+            OverlayLayoutError: If the rendered text does not fit in the margin, see
+                ``validate_fit``.
         """
 
         team: Team | None = None
@@ -231,7 +246,7 @@ class EventOverlay:
                 team.team_id
             ]
 
-        return cls(
+        overlay = cls(
             fig,
             event,
             anchor=video_config.text_anchor,
@@ -241,6 +256,14 @@ class EventOverlay:
             shirt_number=find_event_shirt_number(match, event),
             style=style,
         )
+
+        try:
+            overlay.validate_fit(video_config)
+        except OverlayLayoutError:
+            overlay.remove()
+            raise
+
+        return overlay
 
     @property
     def title_text(self) -> str:
@@ -263,6 +286,70 @@ class EventOverlay:
     def artists(self) -> list[Artist]:
         return list(self._artists)
 
+    def remove(self) -> None:
+        """Take the overlay off the figure."""
+
+        for artist in self._artists:
+            artist.remove()
+
+        self._artists.clear()
+
+    def window_extent(self) -> Bbox:
+        """Pixel bounding box of the rendered card, including the chip."""
+
+        # Text and chip sizes are only known once the figure has been laid out.
+        self.fig.canvas.draw()
+
+        boxes = [artist.get_window_extent() for artist in self._artists]
+        boxes.extend(
+            artist.get_bbox_patch().get_window_extent()
+            for artist in self._artists
+            if artist.get_bbox_patch() is not None
+        )
+
+        return Bbox.union(boxes)
+
+    def validate_fit(self, video_config: VideoConfig) -> None:
+        """Check that the rendered card fits in the margin chosen by ``video_config``.
+
+        The card must lie inside the top or bottom margin (``layout.text_position``),
+        starting ``layout.text_gap`` pixels from the pitch area, and inside the frame
+        horizontally. The size is measured on the figure, so font sizes, line gap,
+        chip padding, text length and DPI are all taken into account. The figure must
+        have the pixel size of ``video_config``.
+
+        Raises:
+            OverlayLayoutError: If the card does not fit, with the space it needs and
+                the space available.
+        """
+
+        layout = video_config.layout
+        box = self.window_extent()
+        tolerance = FIT_TOLERANCE_PIXELS
+
+        if layout.text_position == TextPosition.TOP:
+            margin = layout.margin_top
+            fits_vertically = box.y1 <= video_config.height + tolerance
+        else:
+            margin = layout.margin_bottom
+            fits_vertically = box.y0 >= -tolerance
+
+        if not fits_vertically:
+            raise OverlayLayoutError(
+                f"The event text needs {box.height:.0f} px but only "
+                f"{max(margin - layout.text_gap, 0)} px are free in the "
+                f"{layout.text_position.value} margin ({margin} px margin minus a "
+                f"{layout.text_gap} px gap). Increase the margin, reduce text_gap or "
+                f"text_scale, or use a smaller OverlayStyle."
+            )
+
+        if box.x0 < -tolerance or box.x1 > video_config.width + tolerance:
+            raise OverlayLayoutError(
+                f"The event text is {box.width:.0f} px wide but the video is only "
+                f"{video_config.width} px wide. Reduce text_scale, use smaller font sizes "
+                f"or a lower max_team_name_chars in OverlayStyle."
+            )
+
     def update(self, frame: Frame) -> list[Artist]:
         """Return the overlay artists; the text does not change between frames."""
 
@@ -271,6 +358,7 @@ class EventOverlay:
 
 __all__ = [
     "EventOverlay",
+    "OverlayLayoutError",
     "OverlayStyle",
     "shorten_text",
 ]
