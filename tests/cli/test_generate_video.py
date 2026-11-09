@@ -177,6 +177,23 @@ def test_shot_listing_is_a_table():
     assert goal.index("1H") == saved.index("2H")
 
 
+@pytest.mark.parametrize(
+    ("shirt_number", "player_name", "expected"),
+    [
+        (11, "K. Coman", "#11 K. Coman"),
+        (None, "K. Coman", "K. Coman"),
+        (11, None, "#11"),
+        (None, None, "-"),
+    ],
+)
+def test_shot_listing_shows_the_player_number_and_name(shirt_number, player_name, expected):
+    listing = format_shot_listing([make_shot(shirt_number=shirt_number, player_name=player_name)])
+    header, row = listing.splitlines()
+    player_column = row[header.index("PLAYER") : header.index("OUTCOME")]
+
+    assert player_column.strip() == expected
+
+
 def test_empty_shot_listing():
     assert format_shot_listing([]) == "No shots or goals found."
 

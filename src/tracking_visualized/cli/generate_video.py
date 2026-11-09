@@ -137,7 +137,7 @@ def default_output_path(match_id: str, event_id: str, video_format: str) -> Path
 
 
 def format_shot_listing(shots: Sequence[ShotSummary]) -> str:
-    """Format shots as a table: event ID, time, team, player and outcome."""
+    """Format shots as a table: event ID, time, team, player (number and name), outcome."""
 
     if not shots:
         return "No shots or goals found."
@@ -150,7 +150,7 @@ def format_shot_listing(shots: Sequence[ShotSummary]) -> str:
                 shot.event_id,
                 format_event_time(MatchTime(shot.period, shot.period_seconds)),
                 shot.team_name,
-                f"#{shot.shirt_number}" if shot.shirt_number is not None else "-",
+                _format_player(shot),
                 "GOAL" if shot.is_goal else shot.outcome.value,
             )
         )
@@ -161,6 +161,15 @@ def format_shot_listing(shots: Sequence[ShotSummary]) -> str:
         "  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip()
         for row in rows
     )
+
+
+def _format_player(shot: ShotSummary) -> str:
+    parts = [
+        f"#{shot.shirt_number}" if shot.shirt_number is not None else None,
+        shot.player_name,
+    ]
+
+    return " ".join(part for part in parts if part) or "-"
 
 
 class ProgressReporter:

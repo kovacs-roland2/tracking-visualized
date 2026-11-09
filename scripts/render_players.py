@@ -261,20 +261,10 @@ def main() -> None:
 
         if args.video:
             # In the video the event text sits in the top margin instead of over the pitch.
-            team = next(team for team in teams if team.team_id == event.team_id)
-            overlay = EventOverlay(
-                fig,
-                event,
-                anchor=video_config.text_anchor,
-                position=layout.text_position,
-                team=team,
-                team_style=team_styles[team.team_id],
-                shirt_number=shot.shirt_number,
-                style=overlay_style,
-            )
-
             try:
-                overlay.validate_fit(video_config)
+                overlay = EventOverlay.from_match(
+                    fig, match, event, video_config, style=overlay_style
+                )
             except OverlayLayoutError as error:
                 raise SystemExit(str(error)) from error
 

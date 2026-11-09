@@ -34,6 +34,7 @@ from tracking_visualized.rendering import (  # noqa: E402
     TeamStyle,
     shorten_text,
 )
+from tracking_visualized.rendering.overlays import _shortened_names  # noqa: E402
 
 HOME = Team(team_id="home", name="Home FC", side=TeamSide.HOME)
 AWAY = Team(team_id="away", name="Away United", side=TeamSide.AWAY)
@@ -144,6 +145,34 @@ def test_long_team_names_are_shortened(fig):
     overlay = make_overlay(fig, team=long_team, style=OverlayStyle(max_team_name_chars=12))
 
     assert overlay.subtitle.get_text() == "#11  ·  Association…"
+
+
+def test_subtitle_shows_the_player_name_after_the_shirt_number(fig):
+    overlay = make_overlay(fig, player_name="K. Coman")
+
+    assert overlay.subtitle.get_text() == "#11 K. Coman  ·  Away United"
+
+
+def test_subtitle_shows_the_player_name_without_a_shirt_number(fig):
+    overlay = make_overlay(fig, shirt_number=None, player_name="K. Coman")
+
+    assert overlay.subtitle.get_text() == "K. Coman  ·  Away United"
+
+
+def test_blank_player_names_are_left_out(fig):
+    overlay = make_overlay(fig, player_name="   ")
+
+    assert overlay.subtitle.get_text() == "#11  ·  Away United"
+
+
+def test_long_player_names_are_shortened(fig):
+    overlay = make_overlay(
+        fig,
+        player_name="Maximilian Alexander Mustermann",
+        style=OverlayStyle(max_player_name_chars=12),
+    )
+
+    assert overlay.subtitle.get_text() == "#11 Maximilian…  ·  Away United"
 
 
 def test_shorten_text():
@@ -259,6 +288,14 @@ def test_from_match_looks_up_team_style_and_shirt_number(fig):
     )
 
 
+def test_from_match_looks_up_the_player_name(fig):
+    config = VideoConfig(width=540, height=960, dpi=50)
+    players = (Player(player_id="p11", team_id="away", name="K. Coman", shirt_number=11),)
+    overlay = EventOverlay.from_match(fig, make_match(players), make_event(), config)
+
+    assert overlay.subtitle.get_text() == "#11 K. Coman  ·  Away United"
+
+
 def test_from_match_uses_custom_team_styles(fig):
     config = VideoConfig(width=540, height=960, dpi=50)
     overlay = EventOverlay.from_match(
@@ -319,6 +356,7 @@ def test_from_match_places_the_overlay_in_the_configured_margin(fig):
         {"chip_padding": -0.1},
         {"line_gap": -1},
         {"max_team_name_chars": 1},
+        {"max_player_name_chars": 1},
     ],
 )
 def test_invalid_overlay_styles_are_rejected(kwargs):
@@ -433,6 +471,62 @@ def test_text_wider_than_the_frame_is_rejected():
         EventOverlay.from_match(
             video_figure(config), make_match(), make_event(), config, style=style
         )
+
+
+LONG_NAME_PLAYERS = (
+    Player(
+        player_id="p11", team_id="away", name="Maximilian Alexander Mustermann", shirt_number=11
+    ),
+)
+
+
+def narrow_overlay(subtitle_font_size: float) -> EventOverlay:
+    config = layout_config(width=540, height=960, dpi=50, margin_top=300, margin_bottom=300)
+
+    return EventOverlay.from_match(
+        video_figure(config),
+        make_match(LONG_NAME_PLAYERS),
+        make_event(),
+        config,
+        style=OverlayStyle(subtitle_font_size=subtitle_font_size),
+    )
+
+
+def test_a_name_that_fits_is_cut_only_at_the_style_limit():
+    overlay = narrow_overlay(14)
+
+    assert overlay.subtitle.get_text() == "#11 Maximilian Alexande…  ·  Away United"
+
+
+def test_a_too_wide_name_is_shortened_until_the_chip_fits():
+    overlay = narrow_overlay(40)
+
+    assert overlay.subtitle.get_text() == "#11 Maximilian…  ·  Away United"
+
+
+def test_the_name_is_left_out_when_no_short_form_fits():
+    overlay = narrow_overlay(58)
+
+    assert overlay.subtitle.get_text() == "#11  ·  Away United"
+
+
+def test_text_too_wide_even_without_the_name_is_still_rejected():
+    with pytest.raises(OverlayLayoutError, match="wide"):
+        narrow_overlay(70)
+
+
+@pytest.mark.parametrize(
+    ("name", "limit", "expected"),
+    [
+        (None, 20, [None]),
+        ("  ", 20, [None]),
+        ("K. Coman", 20, ["K. Coman", "K. Co…", None]),
+        ("Kingsley Coman", 10, ["Kingsley…", "Kingsle…", "Kings…", None]),
+        ("Ali", 20, ["Ali", None]),
+    ],
+)
+def test_shortened_names(name, limit, expected):
+    assert _shortened_names(name, limit) == expected
 
 
 def test_window_extent_covers_title_and_chip(fig):

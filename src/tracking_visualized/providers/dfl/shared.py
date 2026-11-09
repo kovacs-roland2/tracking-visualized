@@ -96,6 +96,25 @@ def load_team_side_index(
     return team_sides
 
 
+def _player_name(player: ET.Element) -> str | None:
+    """Display name of a DFL player, e.g. ``Y. Sommer``.
+
+    DFL metadata has ``Shortname``, ``FirstName`` and ``LastName`` attributes; the short
+    name is preferred, then the full name.
+    """
+
+    short_name = (player.get("Shortname") or "").strip()
+
+    if short_name:
+        return short_name
+
+    full_name = " ".join(
+        part.strip() for part in (player.get("FirstName"), player.get("LastName")) if part
+    ).strip()
+
+    return full_name or None
+
+
 def load_player_index(
     metadata_path: Path,
 ) -> dict[str, PlayerReference]:
@@ -144,7 +163,7 @@ def load_player_index(
 
             player_index[person_id] = PlayerReference(
                 person_id=person_id,
-                name=player.get("Name"),
+                name=_player_name(player),
                 team_id=team_id,
                 team=team,
                 shirt_number=shirt_number,

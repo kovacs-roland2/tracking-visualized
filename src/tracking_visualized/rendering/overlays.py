@@ -10,6 +10,7 @@ from tracking_visualized.domain import Event, Frame, Match, Team
 from tracking_visualized.rendering._validation import validate_colors
 from tracking_visualized.rendering.events import (
     LABEL_SEPARATOR,
+    find_event_player_name,
     find_event_shirt_number,
     format_event_time,
     format_event_type,
@@ -18,6 +19,8 @@ from tracking_visualized.rendering.teams import TeamStyle, resolve_team_styles
 
 ELLIPSIS = "…"
 FIT_TOLERANCE_PIXELS = 1.0
+MIN_PLAYER_NAME_CHARS = 6
+PLAYER_NAME_SHORTENING_STEP = 2
 
 
 class OverlayLayoutError(ValueError):
@@ -44,6 +47,7 @@ class OverlayStyle:
     chip_padding: float = 0.35
     line_gap: float = 6.0
     max_team_name_chars: int = 24
+    max_player_name_chars: int = 20
     zorder: float = 10.0
 
     def __post_init__(self) -> None:
@@ -64,6 +68,9 @@ class OverlayStyle:
         if self.max_team_name_chars < 2:
             raise ValueError("max_team_name_chars must be at least 2.")
 
+        if self.max_player_name_chars < 2:
+            raise ValueError("max_player_name_chars must be at least 2.")
+
 
 def shorten_text(text: str, limit: int) -> str:
     """Cut ``text`` to at most ``limit`` characters, ending in an ellipsis if cut."""
@@ -72,6 +79,30 @@ def shorten_text(text: str, limit: int) -> str:
         return text
 
     return text[: limit - 1].rstrip() + ELLIPSIS
+
+
+def _shortened_names(name: str | None, limit: int) -> list[str | None]:
+    """``name`` cut to ever shorter lengths, ending with ``None`` (no name)."""
+
+    name = name.strip() if name else ""
+
+    if not name:
+        return [None]
+
+    names: list[str | None] = []
+    length = min(limit, len(name))
+
+    while length >= MIN_PLAYER_NAME_CHARS or not names:
+        shortened = shorten_text(name, length)
+
+        if shortened not in names:
+            names.append(shortened)
+
+        length -= PLAYER_NAME_SHORTENING_STEP
+
+    names.append(None)
+
+    return names
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,9 +124,9 @@ class EventOverlay:
     """Two lines of text describing the event, placed in a margin of the video frame.
 
     The title shows the event type and match time (``GOAL  ·  1H 07:49``), gold for
-    goals. Below or above it, a chip in the team's colors shows the shirt number
-    and team name (``#11  ·  Team FC``). Missing details are left out, and the chip
-    is omitted when neither is known.
+    goals. Below or above it, a chip in the team's colors shows the shirt number,
+    player name and team name (``#11 K. Coman  ·  Team FC``). Missing details are left
+    out, and the chip is omitted when none is known.
 
     The text is anchored to a point of the figure and grows away from it, upwards
     for ``TextPosition.TOP`` and downwards for ``TextPosition.BOTTOM``, so that
@@ -121,6 +152,7 @@ class EventOverlay:
         team: Team | None = None,
         team_style: TeamStyle | None = None,
         shirt_number: int | None = None,
+        player_name: str | None = None,
         style: OverlayStyle | None = None,
     ) -> None:
         style = style or OverlayStyle()
@@ -129,6 +161,7 @@ class EventOverlay:
         self.event = event
         self.team = team
         self.shirt_number = shirt_number
+        self.player_name = player_name.strip() if player_name else None
         self.is_visible: bool = True
 
         title = _Line(
@@ -222,14 +255,15 @@ class EventOverlay:
         away_style: TeamStyle | None = None,
         style: OverlayStyle | None = None,
     ) -> "EventOverlay":
-        """Create an overlay, looking up the team and shirt number of the event.
+        """Create an overlay, looking up the team, shirt number and player name of the event.
 
         The anchor and the margin come from ``video_config``, and the figure must have
         the video's size and DPI (see ``apply_video_layout``).
 
         Raises:
             OverlayLayoutError: If the rendered text does not fit in the margin, see
-                ``validate_fit``.
+                ``validate_fit``. A player name that makes the chip too wide is
+                shortened, or left out, instead.
         """
 
         team: Team | None = None
@@ -246,24 +280,37 @@ class EventOverlay:
                 team.team_id
             ]
 
-        overlay = cls(
-            fig,
-            event,
-            anchor=video_config.text_anchor,
-            position=video_config.layout.text_position,
-            team=team,
-            team_style=team_style,
-            shirt_number=find_event_shirt_number(match, event),
-            style=style,
-        )
+        style = style or OverlayStyle()
+        shirt_number = find_event_shirt_number(match, event)
+        error: OverlayLayoutError | None = None
 
-        try:
-            overlay.validate_fit(video_config)
-        except OverlayLayoutError:
-            overlay.remove()
-            raise
+        # A long name can make the chip wider than the video: shorten it step by step
+        # and leave it out as a last resort, so the name never stops a render.
+        for player_name in _shortened_names(
+            find_event_player_name(match, event), style.max_player_name_chars
+        ):
+            overlay = cls(
+                fig,
+                event,
+                anchor=video_config.text_anchor,
+                position=video_config.layout.text_position,
+                team=team,
+                team_style=team_style,
+                shirt_number=shirt_number,
+                player_name=player_name,
+                style=style,
+            )
 
-        return overlay
+            try:
+                overlay.validate_fit(video_config)
+            except OverlayLayoutError as exc:
+                overlay.remove()
+                error = exc
+            else:
+                return overlay
+
+        assert error is not None
+        raise error
 
     @property
     def title_text(self) -> str:
@@ -273,9 +320,19 @@ class EventOverlay:
 
     def _subtitle_text(self, style: OverlayStyle) -> str:
         parts: list[str] = []
+        player = " ".join(
+            part
+            for part in (
+                f"#{self.shirt_number}" if self.shirt_number is not None else None,
+                shorten_text(self.player_name, style.max_player_name_chars)
+                if self.player_name
+                else None,
+            )
+            if part
+        )
 
-        if self.shirt_number is not None:
-            parts.append(f"#{self.shirt_number}")
+        if player:
+            parts.append(player)
 
         if self.team is not None:
             parts.append(shorten_text(self.team.name, style.max_team_name_chars))
