@@ -209,6 +209,8 @@ TrackingSample = PlayerTrackingSample | BallTrackingSample
 def iter_tracking_samples(
     tracking_path: Path,
     metadata_path: Path,
+    *,
+    ball_only: bool = False,
 ) -> Iterator[TrackingSample]:
     """
     Stream player and ball samples from DFL tracking XML.
@@ -216,6 +218,8 @@ def iter_tracking_samples(
     Args:
         tracking_path: The path to the tracking XML file.
         metadata_path: The path to the match metadata XML file.
+        ball_only: Yield only ball samples. Player FrameSets are skipped without
+            parsing their frames, which makes a full pass much faster.
 
     Yields:
         PlayerTrackingSample or BallTrackingSample objects for each frame in the tracking data."""
@@ -258,6 +262,10 @@ def iter_tracking_samples(
                         frame,
                         period,
                     )
+
+            elif ball_only:
+                frame_set.clear()
+                continue
 
             else:
                 person_id = frame_set.get("PersonId")

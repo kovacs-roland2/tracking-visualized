@@ -250,7 +250,7 @@ def _read_timeline(files: DflMatchFiles, stage: StageCallback) -> MatchTimeline:
 
     ball_samples = [
         sample
-        for sample in iter_tracking_samples(files.tracking, files.metadata)
+        for sample in iter_tracking_samples(files.tracking, files.metadata, ball_only=True)
         if isinstance(sample, BallTrackingSample)
     ]
 
