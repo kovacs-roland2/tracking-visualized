@@ -172,6 +172,31 @@ def test_loaded_match_works_with_sequence_selection(files):
     assert not sequence.is_truncated
 
 
+def test_loaded_match_knows_the_length_of_the_event_period(files):
+    match = load_event_match(files, GOAL_ID, pre_event_seconds=1, post_event_seconds=1)
+
+    assert len(match.periods) == 1
+    assert match.periods[0].period == PeriodType.FIRST_HALF
+    assert match.periods[0].duration_seconds == pytest.approx(16.0)
+
+
+def test_off_grid_window_is_not_reported_as_truncated(files):
+    match = load_event_match(files, GOAL_ID, pre_event_seconds=2.33, post_event_seconds=2.33)
+    sequence = select_event_sequence(
+        match, GOAL_ID, pre_event_seconds=2.33, post_event_seconds=2.33
+    )
+
+    assert not sequence.is_truncated
+
+
+def test_window_past_the_end_of_the_period_is_truncated(files):
+    match = load_event_match(files, WIDE_ID, pre_event_seconds=1, post_event_seconds=10)
+    sequence = select_event_sequence(match, WIDE_ID, pre_event_seconds=1, post_event_seconds=10)
+
+    assert sequence.is_truncated
+    assert sequence.effective_post_seconds == pytest.approx(4.0)
+
+
 def test_stage_messages_are_reported_in_order(files):
     stages: list[str] = []
 

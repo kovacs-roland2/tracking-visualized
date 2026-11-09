@@ -323,6 +323,31 @@ def test_a_clip_near_the_period_start_is_noted(
     assert "Note: the clip is 11.0 s instead of 63.0 s" in capsys.readouterr().out
 
 
+def test_an_untruncated_clip_with_off_grid_seconds_has_no_note(
+    dfl_data_dir, small_format, tmp_path, monkeypatch, capsys
+):
+    def fake_render(animator, output, config, *, progress):
+        return fake_video(output)
+
+    monkeypatch.setattr(generate_video, "render_video", fake_render)
+    arguments = run(
+        dfl_data_dir,
+        "--event",
+        GOAL_ID,
+        "--pre",
+        "2.33",
+        "--post",
+        "2.33",
+        "-o",
+        str(tmp_path / "c.mp4"),
+    )
+
+    code = main(arguments)
+
+    assert code == EXIT_OK
+    assert "Note:" not in capsys.readouterr().out
+
+
 def test_the_ffmpeg_option_reaches_the_video_config(
     dfl_data_dir, small_format, tmp_path, monkeypatch
 ):

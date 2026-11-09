@@ -19,6 +19,7 @@ from tracking_visualized.domain import (
     Frame,
     Match,
     MatchMetadata,
+    Period,
     PeriodType,
     Player,
     PlayerPosition,
@@ -224,6 +225,18 @@ def _window_frames(
     ]
 
 
+def _known_periods(period: PeriodType, frames: tuple[FrameTime, ...]) -> tuple[Period, ...]:
+    """The event's period with its length from the full timeline.
+
+    Only a window of frames is loaded, so without this the sequence selection would
+    take the last loaded frame as the end of the period and report clips as cut short.
+    """
+
+    duration = frames[-1].time.seconds if frames else 0.0
+
+    return (Period(period, duration_seconds=duration),) if duration > 0 else ()
+
+
 def _to_tracking_period(period: PeriodType) -> TrackingPeriod:
     return (
         TrackingPeriod.FIRST_HALF if period == PeriodType.FIRST_HALF else TrackingPeriod.SECOND_HALF
@@ -338,7 +351,7 @@ def load_event_match(
             match_day=metadata.match_day,
         ),
         coordinate_system=coordinate_system,
-        periods=(),
+        periods=_known_periods(period, period_timeline.frames),
         teams=teams,
         players=players,
         frames=tuple(frames),
