@@ -8,6 +8,7 @@ from tracking_visualized.providers.dfl import (
     DflMatchFiles,
     list_shots,
     load_event_match,
+    load_time_window_match,
     normalize_match_id,
 )
 
@@ -229,3 +230,32 @@ def test_event_without_tracking_in_its_period_is_reported(dfl_data_dir, files):
 
     with pytest.raises(DflDatasetError, match="second_half"):
         load_event_match(files, WIDE_ID, pre_event_seconds=1, post_event_seconds=1)
+
+
+# --- time windows without an event ---------------------------------------------------------
+
+
+def test_time_window_holds_only_the_requested_frames(files):
+    match = load_time_window_match(
+        files, period=PeriodType.SECOND_HALF, start_seconds=2, end_seconds=3
+    )
+
+    assert match.events == ()
+    assert len(match.frames) == 26
+    assert match.frames[0].time.seconds == pytest.approx(2.0)
+    assert match.frames[-1].time.seconds == pytest.approx(3.0)
+    assert all(frame.time.period == PeriodType.SECOND_HALF for frame in match.frames)
+    assert all(len(frame.player_positions) == 2 for frame in match.frames)
+    assert match.periods[0].duration_seconds == pytest.approx(8.0)
+
+
+def test_time_window_outside_the_period_is_reported(files):
+    with pytest.raises(DflDatasetError, match="No tracking frames between"):
+        load_time_window_match(
+            files, period=PeriodType.FIRST_HALF, start_seconds=100, end_seconds=110
+        )
+
+
+def test_reversed_time_window_is_rejected(files):
+    with pytest.raises(DflDatasetError, match="before its start"):
+        load_time_window_match(files, period=PeriodType.FIRST_HALF, start_seconds=5, end_seconds=4)

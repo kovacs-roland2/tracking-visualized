@@ -2,8 +2,9 @@
 selected shot/goal event) of the sample match to output/players.png, or with --animate a clip of
 the sequence to output/sequence.gif using the animation engine.
 
-Scans the whole tracking file twice (once to find the first-half origin frame,
-once to collect positions for the trail window), so it takes about a minute on the full match.
+Loads the frames with the same DFL loader as ``generate-video``, which scans the whole
+tracking file twice (once for the match timeline, once for the selected frames), so it
+takes about a minute on the full match.
 With --video the same clip is encoded to output/sequence.mp4 (needs FFmpeg) in the 1080x1920
 vertical TikTok layout: the pitch is rotated and fitted inside the layout margins, and the
 event text (type, time, shirt number, team) is shown above the pitch.
@@ -18,40 +19,22 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
-from sample_data import EVENTS_FILE, METADATA_FILE, TRACKING_FILE  # noqa: E402
+from sample_data import MATCH_ID  # noqa: E402
 
 from tracking_visualized.config import (  # noqa: E402
     PitchOrientation,
     RenderingConfig,
     VideoConfig,
 )
-from tracking_visualized.domain import (  # noqa: E402
-    BallPosition,
-    CoordinateSystem,
-    Event,
-    EventType,
-    Frame,
-    MatchTime,
-    PeriodType,
-    Player,
-    PlayerPosition,
-    ShotOutcome,
-    Team,
-    TeamSide,
-)
+from tracking_visualized.domain import Match, PeriodType  # noqa: E402
 from tracking_visualized.providers.dfl import (  # noqa: E402
-    BallTrackingSample,
-    PlayerTrackingSample,
-    ShotEvent,
-    TrackingPeriod,
-    create_coordinate_system,
-    iter_tracking_samples,
-    load_match_metadata,
-    load_shot_events,
-    normalize_tracking_coordinates,
-    validate_event_coordinates,
+    DflDatasetError,
+    DflMatchFiles,
+    ShotSummary,
+    list_shots,
+    load_event_match,
+    load_time_window_match,
 )
-from tracking_visualized.providers.dfl.shared import load_player_index  # noqa: E402
 from tracking_visualized.rendering import (  # noqa: E402
     AnimationSettings,
     BallLayer,
@@ -98,7 +81,7 @@ def parse_args() -> argparse.Namespace:
         "--event",
         default="first-goal",
         help=(
-            "First-half shot to highlight: an event ID or 'first-goal', or 'none' to render "
+            "Shot to highlight (either half): an event ID or 'first-goal', or 'none' to render "
             "the frame at --seconds without an event (default: first-goal). "
             "The rendered frame is taken relative to the event instead of --seconds."
         ),
@@ -134,69 +117,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def find_first_half_origin() -> int | None:
-    """Return the earliest first-half frame number across all players and the ball.
+def select_shot(files: DflMatchFiles, event_arg: str) -> ShotSummary:
+    """Pick a shot by event ID, or the first goal of the match."""
 
-    iter_tracking_samples yields one FrameSet at a time in XML order, so the
-    first sample seen is not necessarily the first frame of the half. Taking
-    the minimum over every first-half sample makes the origin independent of
-    track order.
-    """
-
-    origin: int | None = None
-
-    for sample in iter_tracking_samples(TRACKING_FILE, METADATA_FILE):
-        if sample.period != TrackingPeriod.FIRST_HALF:
-            continue
-
-        if origin is None or sample.frame_number < origin:
-            origin = sample.frame_number
-
-    return origin
-
-
-def collect_frame_samples(
-    first_frame: int, last_frame: int, coordinate_system: CoordinateSystem
-) -> dict[int, tuple[list[PlayerPosition], BallPosition | None]]:
-    """Collect player and ball positions for first-half frames in ``first_frame..last_frame``."""
-
-    frames: dict[int, tuple[list[PlayerPosition], BallPosition | None]] = {}
-
-    for sample in iter_tracking_samples(TRACKING_FILE, METADATA_FILE):
-        if sample.period != TrackingPeriod.FIRST_HALF:
-            continue
-
-        if not first_frame <= sample.frame_number <= last_frame:
-            continue
-
-        positions, ball = frames.setdefault(sample.frame_number, ([], None))
-        x, y = normalize_tracking_coordinates(sample.x, sample.y, coordinate_system)
-
-        if isinstance(sample, PlayerTrackingSample):
-            positions.append(PlayerPosition(sample.person_id, x, y))
-        elif isinstance(sample, BallTrackingSample):
-            frames[sample.frame_number] = (
-                positions,
-                BallPosition(x=x, y=y, z=sample.z, is_in_play=sample.is_alive),
-            )
-
-    return frames
-
-
-def select_shot(event_arg: str) -> ShotEvent:
-    """Pick a first-half shot by event ID, or the first first-half goal."""
-
-    shots = [
-        shot
-        for shot in load_shot_events(EVENTS_FILE, METADATA_FILE)
-        if shot.period.name == "FIRST_HALF"
-    ]
+    shots = list_shots(files)
 
     if event_arg == "first-goal":
         goals = [shot for shot in shots if shot.is_goal]
 
         if not goals:
-            raise SystemExit("No first-half goal found.")
+            raise SystemExit("No goal found.")
 
         return goals[0]
 
@@ -206,84 +136,61 @@ def select_shot(event_arg: str) -> ShotEvent:
 
     ids = ", ".join(shot.event_id for shot in shots)
 
-    raise SystemExit(f"No first-half shot with ID '{event_arg}'. Available: {ids}")
+    raise SystemExit(f"No shot with ID '{event_arg}'. Available: {ids}")
 
 
-def build_event(
-    shot: ShotEvent,
-    event_frame: int,
-    origin_frame: int,
-) -> Event:
-    x, y = validate_event_coordinates(shot.x, shot.y)
+def load_frames(args: argparse.Namespace, files: DflMatchFiles, shot: ShotSummary | None) -> Match:
+    """Load the frames to render: the clip, or the trail window ending at the rendered frame."""
 
-    return Event(
-        event_id=shot.event_id,
-        event_type=EventType.SHOT,
-        time=MatchTime(PeriodType.FIRST_HALF, (event_frame - origin_frame) / FPS),
-        team_id=shot.team_id,
-        player_id=shot.player_id,
-        x=x,
-        y=y,
-        frame_index=event_frame,
-        shot_outcome=ShotOutcome(shot.outcome.value),
-        xg=shot.xg,
+    clip = args.animate or args.video
+
+    if shot is not None:
+        pre = args.clip_before_seconds if clip else args.trail_seconds
+        post = args.clip_after_seconds if clip else args.after_event_seconds
+
+        return load_event_match(
+            files, shot.event_id, pre_event_seconds=pre, post_event_seconds=post, on_stage=print
+        )
+
+    start = args.seconds - (args.clip_before_seconds if clip else args.trail_seconds)
+    end = args.seconds + (args.clip_after_seconds if clip else 0.0)
+
+    return load_time_window_match(
+        files,
+        period=PeriodType.FIRST_HALF,
+        start_seconds=max(0.0, start),
+        end_seconds=end,
+        on_stage=print,
     )
 
 
 def main() -> None:
     args = parse_args()
 
-    metadata = load_match_metadata(METADATA_FILE)
-    coordinate_system = create_coordinate_system(metadata.pitch_length, metadata.pitch_width)
+    files = DflMatchFiles.discover(MATCH_ID)
+    shot = select_shot(files, args.event) if args.event.lower() != "none" else None
 
-    teams = (
-        Team(metadata.home_team.team_id, metadata.home_team.name, TeamSide.HOME),
-        Team(metadata.away_team.team_id, metadata.away_team.name, TeamSide.AWAY),
-    )
-    players = tuple(
-        Player(ref.person_id, ref.team_id, ref.name, ref.shirt_number)
-        for ref in load_player_index(METADATA_FILE).values()
-    )
+    try:
+        match = load_frames(args, files, shot)
+    except DflDatasetError as error:
+        raise SystemExit(str(error)) from error
 
-    origin_frame = find_first_half_origin()
+    coordinate_system = match.coordinate_system
+    teams = match.teams
+    players = match.players
+    event = match.events[0] if match.events else None
+    frames = list(match.frames)
 
-    if origin_frame is None:
-        raise SystemExit("No first-half tracking samples found.")
+    if not (args.animate or args.video):
+        # The trails end at the rendered (last) frame and reach back --trail-seconds.
+        trail_start = frames[-1].time.seconds - args.trail_seconds
+        frames = [frame for frame in frames if frame.time.seconds >= trail_start]
 
-    shot = select_shot(args.event) if args.event.lower() != "none" else None
-    event: Event | None = None
+    if not any(frame.player_positions for frame in frames):
+        raise SystemExit("No player positions found in the selected frames.")
 
-    if shot is not None:
-        anchor_frame = (
-            shot.calculated_frame
-            if shot.calculated_frame is not None
-            else origin_frame + round(shot.period_seconds * FPS)
-        )
-        event = build_event(shot, anchor_frame, origin_frame)
-    else:
-        anchor_frame = origin_frame + round(args.seconds * FPS)
-
-    if args.animate or args.video:
-        first_frame = max(origin_frame, anchor_frame - round(args.clip_before_seconds * FPS))
-        last_frame = anchor_frame + round(args.clip_after_seconds * FPS)
-    else:
-        last_frame = anchor_frame + (round(args.after_event_seconds * FPS) if shot else 0)
-        first_frame = max(origin_frame, last_frame - round(args.trail_seconds * FPS))
-
-    samples = collect_frame_samples(first_frame, last_frame, coordinate_system)
-
-    if not samples or not any(positions for positions, _ in samples.values()):
-        raise SystemExit(f"No player positions found in frames {first_frame}..{last_frame}.")
-
-    frames = [
-        Frame(
-            frame_index=frame_number,
-            time=MatchTime(PeriodType.FIRST_HALF, (frame_number - origin_frame) / FPS),
-            player_positions=tuple(positions),
-            ball_position=ball,
-        )
-        for frame_number, (positions, ball) in sorted(samples.items())
-    ]
+    first_frame = frames[0].frame_index
+    last_frame = frames[-1].frame_index
 
     pitch = PitchDimensions.from_coordinate_system(coordinate_system)
     config = RenderingConfig()

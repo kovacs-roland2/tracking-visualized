@@ -20,6 +20,7 @@ from tracking_visualized.providers.dfl.loader import (
     ShotSummary,
     list_shots,
     load_event_match,
+    load_time_window_match,
     normalize_match_id,
 )
 from tracking_visualized.providers.dfl.match_metadata import (
@@ -54,6 +55,7 @@ __all__ = [
     "ShotSummary",
     "list_shots",
     "load_event_match",
+    "load_time_window_match",
     "normalize_match_id",
     "CompetitionMetadata",
     "DflMatchMetadataError",

@@ -2,8 +2,16 @@
 
 from bisect import bisect_left, bisect_right
 from math import isfinite
+from typing import Protocol
 
-from tracking_visualized.domain import Frame, Match, PeriodType
+from tracking_visualized.domain import Frame, Match, MatchTime, PeriodType
+
+
+class TimedFrame(Protocol):
+    """Anything with a match time, e.g. a ``Frame`` or a timeline ``FrameTime``."""
+
+    @property
+    def time(self) -> MatchTime: ...
 
 
 def validate_seconds(
@@ -65,11 +73,11 @@ def period_end_seconds(
     return frames[-1].time.seconds
 
 
-def frames_in_window(
-    frames: tuple[Frame, ...],
+def frames_in_window[T: TimedFrame](
+    frames: tuple[T, ...],
     start_seconds: float,
     end_seconds: float,
-) -> tuple[Frame, ...]:
+) -> tuple[T, ...]:
     """Return the frames whose time lies in ``[start_seconds, end_seconds]``.
 
     ``frames`` must be ordered by time, as returned by ``period_frames``.

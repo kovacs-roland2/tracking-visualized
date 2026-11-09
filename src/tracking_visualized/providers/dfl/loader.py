@@ -27,7 +27,8 @@ from tracking_visualized.domain import (
     Team,
     TeamSide,
 )
-from tracking_visualized.normalization.time import FrameTime
+from tracking_visualized.normalization.time import FrameTime, MatchTimeline, PeriodTimeline
+from tracking_visualized.processing.frame_windows import frames_in_window
 from tracking_visualized.providers.dfl.coordinates import (
     create_coordinate_system,
     normalize_tracking_coordinates,
@@ -38,6 +39,7 @@ from tracking_visualized.providers.dfl.events import (
     load_shot_events,
     to_domain_period,
 )
+from tracking_visualized.providers.dfl.match_metadata import MatchMetadata as DflMatchMetadata
 from tracking_visualized.providers.dfl.match_metadata import load_match_metadata
 from tracking_visualized.providers.dfl.shared import load_player_index
 from tracking_visualized.providers.dfl.timeline import (
@@ -215,16 +217,6 @@ def _find_shot(files: DflMatchFiles, event_id: str) -> ShotEvent:
     )
 
 
-def _window_frames(
-    timeline_frames: tuple[FrameTime, ...],
-    start_seconds: float,
-    end_seconds: float,
-) -> list[FrameTime]:
-    return [
-        frame for frame in timeline_frames if start_seconds <= frame.time.seconds <= end_seconds
-    ]
-
-
 def _known_periods(period: PeriodType, frames: tuple[FrameTime, ...]) -> tuple[Period, ...]:
     """The event's period with its length from the full timeline.
 
@@ -240,6 +232,87 @@ def _known_periods(period: PeriodType, frames: tuple[FrameTime, ...]) -> tuple[P
 def _to_tracking_period(period: PeriodType) -> TrackingPeriod:
     return (
         TrackingPeriod.FIRST_HALF if period == PeriodType.FIRST_HALF else TrackingPeriod.SECOND_HALF
+    )
+
+
+def _stage_reporter(on_stage: StageCallback | None) -> StageCallback:
+    def stage(message: str) -> None:
+        if on_stage is not None:
+            on_stage(message)
+
+    return stage
+
+
+def _read_timeline(files: DflMatchFiles, stage: StageCallback) -> MatchTimeline:
+    """First pass over the tracking file: build the match timeline from the ball."""
+
+    stage("Scanning tracking data for the match timeline (1/2)")
+
+    ball_samples = [
+        sample
+        for sample in iter_tracking_samples(files.tracking, files.metadata)
+        if isinstance(sample, BallTrackingSample)
+    ]
+
+    if not ball_samples:
+        raise DflDatasetError(f"The tracking file '{files.tracking}' contains no ball tracking.")
+
+    return build_match_timeline(ball_samples)
+
+
+def _period_timeline(timeline: MatchTimeline, period: PeriodType) -> PeriodTimeline:
+    period_timeline = next((item for item in timeline.periods if item.period == period), None)
+
+    if period_timeline is None:
+        raise DflDatasetError(f"The tracking data has no frames for the {period.value}.")
+
+    return period_timeline
+
+
+def _build_match(
+    files: DflMatchFiles,
+    metadata: DflMatchMetadata,
+    period_timeline: PeriodTimeline,
+    window: tuple[FrameTime, ...],
+    events: tuple[Event, ...],
+    stage: StageCallback,
+) -> Match:
+    """Second pass over the tracking file: build a ``Match`` with the frames of ``window``."""
+
+    period = period_timeline.period
+    coordinate_system = create_coordinate_system(metadata.pitch_length, metadata.pitch_width)
+
+    stage(f"Reading {len(window)} tracking frames (2/2)")
+
+    frames = _collect_frames(files, window, period, coordinate_system)
+
+    team_sides = {
+        metadata.home_team.team_id: TeamSide.HOME,
+        metadata.away_team.team_id: TeamSide.AWAY,
+    }
+    teams = (
+        Team(metadata.home_team.team_id, metadata.home_team.name, TeamSide.HOME),
+        Team(metadata.away_team.team_id, metadata.away_team.name, TeamSide.AWAY),
+    )
+    players = tuple(
+        Player(reference.person_id, reference.team_id, reference.name, reference.shirt_number)
+        for reference in load_player_index(files.metadata).values()
+        if reference.team_id in team_sides
+    )
+
+    return Match(
+        metadata=MatchMetadata(
+            match_id=metadata.match_id,
+            competition=metadata.competition.name,
+            season=metadata.season.name,
+            match_day=metadata.match_day,
+        ),
+        coordinate_system=coordinate_system,
+        periods=_known_periods(period, period_timeline.frames),
+        teams=teams,
+        players=players,
+        frames=tuple(frames),
+        events=events,
     )
 
 
@@ -270,36 +343,17 @@ def load_event_match(
         DflDatasetError: If no tracking frames exist around the shot.
     """
 
-    def stage(message: str) -> None:
-        if on_stage is not None:
-            on_stage(message)
-
+    stage = _stage_reporter(on_stage)
     stage("Reading match information and events")
 
     metadata = load_match_metadata(files.metadata)
     shot = _find_shot(files, event_id)
-    coordinate_system = create_coordinate_system(metadata.pitch_length, metadata.pitch_width)
 
-    stage("Scanning tracking data for the match timeline (1/2)")
-
-    ball_samples = [
-        sample
-        for sample in iter_tracking_samples(files.tracking, files.metadata)
-        if isinstance(sample, BallTrackingSample)
-    ]
-
-    if not ball_samples:
-        raise DflDatasetError(f"The tracking file '{files.tracking}' contains no ball tracking.")
-
-    timeline = build_match_timeline(ball_samples)
+    timeline = _read_timeline(files, stage)
     normalized = normalize_shot_time(shot, timeline)
-    period = normalized.time.period
-    period_timeline = next((item for item in timeline.periods if item.period == period), None)
+    period_timeline = _period_timeline(timeline, normalized.time.period)
 
-    if period_timeline is None:
-        raise DflDatasetError(f"The tracking data has no frames for the {period.value}.")
-
-    window = _window_frames(
+    window = frames_in_window(
         period_timeline.frames,
         normalized.time.seconds - pre_event_seconds,
         normalized.time.seconds + post_event_seconds,
@@ -308,26 +362,8 @@ def load_event_match(
     if not window:
         raise DflDatasetError(
             f"No tracking frames around event '{event_id}' "
-            f"({period.value}, {normalized.time.seconds:.1f} s)."
+            f"({normalized.time.period.value}, {normalized.time.seconds:.1f} s)."
         )
-
-    stage(f"Reading {len(window)} tracking frames around the event (2/2)")
-
-    frames = _collect_frames(files, window, period, coordinate_system)
-
-    team_sides = {
-        metadata.home_team.team_id: TeamSide.HOME,
-        metadata.away_team.team_id: TeamSide.AWAY,
-    }
-    teams = (
-        Team(metadata.home_team.team_id, metadata.home_team.name, TeamSide.HOME),
-        Team(metadata.away_team.team_id, metadata.away_team.name, TeamSide.AWAY),
-    )
-    players = tuple(
-        Player(reference.person_id, reference.team_id, reference.name, reference.shirt_number)
-        for reference in load_player_index(files.metadata).values()
-        if reference.team_id in team_sides
-    )
 
     x, y = validate_event_coordinates(shot.x, shot.y)
     event = Event(
@@ -343,25 +379,51 @@ def load_event_match(
         xg=shot.xg,
     )
 
-    return Match(
-        metadata=MatchMetadata(
-            match_id=metadata.match_id,
-            competition=metadata.competition.name,
-            season=metadata.season.name,
-            match_day=metadata.match_day,
-        ),
-        coordinate_system=coordinate_system,
-        periods=_known_periods(period, period_timeline.frames),
-        teams=teams,
-        players=players,
-        frames=tuple(frames),
-        events=(event,),
-    )
+    return _build_match(files, metadata, period_timeline, window, (event,), stage)
+
+
+def load_time_window_match(
+    files: DflMatchFiles,
+    *,
+    period: PeriodType,
+    start_seconds: float,
+    end_seconds: float,
+    on_stage: StageCallback | None = None,
+) -> Match:
+    """Load a ``Match`` with the tracking frames of a period-relative time range.
+
+    Like ``load_event_match`` but without an event: the match has no events and the
+    frames from ``start_seconds`` to ``end_seconds`` of ``period``.
+
+    Raises:
+        DflDatasetError: If the range is empty or holds no tracking frames.
+    """
+
+    if end_seconds < start_seconds:
+        raise DflDatasetError(
+            f"The end of the time range ({end_seconds:g} s) is before its start "
+            f"({start_seconds:g} s)."
+        )
+
+    stage = _stage_reporter(on_stage)
+    stage("Reading match information")
+
+    metadata = load_match_metadata(files.metadata)
+    period_timeline = _period_timeline(_read_timeline(files, stage), period)
+    window = frames_in_window(period_timeline.frames, start_seconds, end_seconds)
+
+    if not window:
+        raise DflDatasetError(
+            f"No tracking frames between {start_seconds:.1f} s and {end_seconds:.1f} s "
+            f"of the {period.value}."
+        )
+
+    return _build_match(files, metadata, period_timeline, window, (), stage)
 
 
 def _collect_frames(
     files: DflMatchFiles,
-    window: list[FrameTime],
+    window: tuple[FrameTime, ...],
     period: PeriodType,
     coordinate_system: CoordinateSystem,
 ) -> list[Frame]:
@@ -405,5 +467,6 @@ __all__ = [
     "ShotSummary",
     "list_shots",
     "load_event_match",
+    "load_time_window_match",
     "normalize_match_id",
 ]
