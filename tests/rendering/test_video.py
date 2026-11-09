@@ -369,6 +369,24 @@ def test_render_video_encodes_a_valid_h264_mp4(tmp_path):
 
 
 @requires_ffmpeg
+def test_render_video_reports_progress_for_every_frame(tmp_path):
+    calls: list[tuple[int, int]] = []
+
+    render_video(
+        make_animator(frame_count=20),
+        tmp_path / "clip.mp4",
+        SMALL,
+        progress=lambda done, total: calls.append((done, total)),
+    )
+
+    totals = {total for _, total in calls}
+
+    assert len(totals) == 1
+    assert [done for done, _ in calls] == list(range(1, len(calls) + 1))
+    assert calls[-1][0] == calls[-1][1]
+
+
+@requires_ffmpeg
 def test_render_video_encodes_rounding_sensitive_dimensions(tmp_path):
     config = VideoConfig(width=58, height=112, fps=10, dpi=100, layout=NO_MARGINS)
 

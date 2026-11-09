@@ -85,6 +85,35 @@ brew install ffmpeg        # macOS
 sudo apt install ffmpeg    # Debian / Ubuntu
 ```
 
+### Generating a video from an event
+
+One command turns a shot or goal of a match into a TikTok-ready MP4 (1080x1920, with the pitch rotated and the event type, time, shirt number and team shown above it):
+
+```bash
+uv run generate-video --match J03WMX --event EVENT_ID --format tiktok
+```
+
+The match files are read from `data/raw/dfl/<MATCH_ID>/` (see [Downloading the Sample Data](#downloading-the-sample-data)). List the shots and goals of a match with their event IDs first:
+
+```bash
+uv run generate-video --match J03WMX --list-events
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--match MATCH_ID` | Match to use, e.g. `J03WMX` (`DFL-MAT-J03WMX` works too). |
+| `--event EVENT_ID` | Shot or goal to render. |
+| `--format` | Output format; `tiktok` (default) is the only one for now. |
+| `-o`, `--output` | Output file, default `output/<match>_<event>_<format>.mp4`. Folders are created and an existing file is replaced. |
+| `--pre`, `--post` | Seconds before (default 5) and after (default 3) the event. |
+| `--data-dir` | Folder with the match folders, default `data/raw/dfl`. |
+| `--ffmpeg PATH` | FFmpeg to use, default `$FFMPEG_BINARY`, then `ffmpeg` on `PATH`. |
+| `--verbose` | Show the full traceback on errors. |
+
+`python scripts/generate_video.py ...` and `python -m tracking_visualized.cli.generate_video ...` do the same. Loading reads the large tracking file twice, so expect a minute or two before rendering starts; rendering an 8 second clip takes about the same again. Progress is printed along the way. Problems such as missing data files, an unknown event ID or a missing FFmpeg end with a single `error:` line and exit code 1.
+
+The older helper script renders the first goal of the sample match:
+
 ```bash
 uv run python scripts/render_players.py --video
 ```

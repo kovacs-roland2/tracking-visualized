@@ -1,6 +1,7 @@
 import argparse
 from collections.abc import Sequence
 
+from tracking_visualized.cli.arguments import non_negative_float
 from tracking_visualized.config import SequenceConfig
 from tracking_visualized.domain import Match, PeriodType
 from tracking_visualized.processing import (
@@ -12,28 +13,6 @@ from tracking_visualized.processing import (
     select_event_sequence,
     select_time_range,
 )
-
-
-def _non_negative_float(
-    value: str,
-) -> float:
-    """
-    Validate that a string represents a non-negative float.
-
-    Args:
-        value (str): The string to validate.
-
-    Returns:
-        float: The parsed non-negative float."""
-    try:
-        parsed = float(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"Expected a number, got '{value}'.") from exc
-
-    if parsed < 0:
-        raise argparse.ArgumentTypeError("Value cannot be negative.")
-
-    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     event_parser.add_argument(
         "--pre",
-        type=_non_negative_float,
+        type=non_negative_float,
         default=sequence_defaults.pre_event_seconds,
         help=(
             f"Seconds before the event to include. Default: {sequence_defaults.pre_event_seconds:g}"
@@ -73,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     event_parser.add_argument(
         "--post",
-        type=_non_negative_float,
+        type=non_negative_float,
         default=sequence_defaults.post_event_seconds,
         help=(
             f"Seconds after the event to include. Default: {sequence_defaults.post_event_seconds:g}"
@@ -95,14 +74,14 @@ def build_parser() -> argparse.ArgumentParser:
     time_parser.add_argument(
         "--start",
         required=True,
-        type=_non_negative_float,
+        type=non_negative_float,
         help="Period-relative start time in seconds.",
     )
 
     time_parser.add_argument(
         "--end",
         required=True,
-        type=_non_negative_float,
+        type=non_negative_float,
         help="Period-relative end time in seconds.",
     )
 

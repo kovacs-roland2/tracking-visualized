@@ -9,6 +9,8 @@ from tracking_visualized.config import (
     TextPosition,
     VideoConfig,
     VideoLayoutConfig,
+    video_config_for_format,
+    video_format_names,
 )
 
 
@@ -189,3 +191,28 @@ def test_text_gap_must_fit_in_the_text_margin():
 
     with pytest.raises(ValidationError):
         VideoLayoutConfig(text_gap=-1)
+
+
+def test_tiktok_is_the_default_video_format():
+    assert video_format_names() == ("tiktok",)
+
+    config = video_config_for_format("tiktok")
+
+    assert (config.width, config.height, config.fps) == (1080, 1920, 25)
+    assert config == VideoConfig()
+
+
+def test_video_format_names_are_case_and_space_insensitive():
+    assert video_config_for_format("  TikTok ") == video_config_for_format("tiktok")
+
+
+def test_each_format_request_returns_its_own_config():
+    first = video_config_for_format("tiktok")
+    first.fps = 30
+
+    assert video_config_for_format("tiktok").fps == 25
+
+
+def test_unknown_video_format_lists_the_valid_ones():
+    with pytest.raises(ValueError, match="Unknown video format 'vhs'. Choose one of: tiktok"):
+        video_config_for_format("vhs")

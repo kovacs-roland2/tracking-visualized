@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -288,10 +288,26 @@ def validate_video_info(
         raise VideoValidationError(f"Invalid video '{info.path}': " + "; ".join(problems) + ".")
 
 
+def _frame_progress(
+    progress: Callable[[int, int], None] | None,
+) -> Callable[[int, int], None] | None:
+    """Adapt ``progress`` to Matplotlib's callback, which counts frames from 0."""
+
+    if progress is None:
+        return None
+
+    def report(frame_number: int, total: int) -> None:
+        progress(frame_number + 1, total)
+
+    return report
+
+
 def render_video(
     animator: SequenceAnimator,
     output_path: str | os.PathLike[str],
     config: VideoConfig | None = None,
+    *,
+    progress: Callable[[int, int], None] | None = None,
 ) -> VideoInfo:
     """Render ``animator`` to an H.264 MP4 file and validate the result.
 
@@ -305,6 +321,8 @@ def render_video(
         animator: The animation to encode. Its frame rate must equal ``config.fps``.
         output_path: Destination ``.mp4`` file. Missing folders are created.
         config: Video settings. Defaults to ``VideoConfig()``.
+        progress: Called as ``progress(frames_done, frames_total)`` while frames are
+            rendered, once per frame.
 
     Returns:
         The validated properties of the written video.
@@ -346,7 +364,12 @@ def render_video(
 
     try:
         with matplotlib.rc_context({"animation.ffmpeg_path": str(ffmpeg)}):
-            animator.build().save(partial, writer=writer, dpi=config.dpi)
+            animator.build().save(
+                partial,
+                writer=writer,
+                dpi=config.dpi,
+                progress_callback=_frame_progress(progress),
+            )
 
         info = probe_video(partial, ffprobe)
         validate_video_info(info, config, animator.frame_count)
