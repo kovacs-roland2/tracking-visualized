@@ -1,3 +1,5 @@
+import xml.etree.ElementTree as ET
+
 import pytest
 
 from tracking_visualized.domain import EventType, PeriodType, ShotOutcome, TeamSide
@@ -259,3 +261,42 @@ def test_time_window_outside_the_period_is_reported(files):
 def test_reversed_time_window_is_rejected(files):
     with pytest.raises(DflDatasetError, match="before its start"):
         load_time_window_match(files, period=PeriodType.FIRST_HALF, start_seconds=5, end_seconds=4)
+
+
+# --- reading the metadata ------------------------------------------------------------------
+
+
+@pytest.fixture
+def metadata_reads(files, monkeypatch) -> list[object]:
+    """Records each parse of the metadata file."""
+
+    reads: list[object] = []
+    parse = ET.parse
+
+    def counting_parse(source, *args, **kwargs):
+        if source == files.metadata:
+            reads.append(source)
+
+        return parse(source, *args, **kwargs)
+
+    monkeypatch.setattr(ET, "parse", counting_parse)
+
+    return reads
+
+
+@pytest.mark.parametrize(
+    "load",
+    [
+        lambda files: list_shots(files),
+        lambda files: load_event_match(files, GOAL_ID, pre_event_seconds=1, post_event_seconds=1),
+        lambda files: load_time_window_match(
+            files, period=PeriodType.FIRST_HALF, start_seconds=1, end_seconds=2
+        ),
+    ],
+    ids=["list_shots", "load_event_match", "load_time_window_match"],
+)
+def test_the_metadata_file_is_read_once_per_load(files, metadata_reads, load):
+    load(files)
+
+    # Once for the match information and once for the player index.
+    assert len(metadata_reads) == 2

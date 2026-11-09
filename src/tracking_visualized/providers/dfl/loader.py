@@ -40,8 +40,9 @@ from tracking_visualized.providers.dfl.events import (
     to_domain_period,
 )
 from tracking_visualized.providers.dfl.match_metadata import MatchMetadata as DflMatchMetadata
+from tracking_visualized.providers.dfl.match_metadata import TeamSide as DflTeamSide
 from tracking_visualized.providers.dfl.match_metadata import load_match_metadata
-from tracking_visualized.providers.dfl.shared import load_player_index
+from tracking_visualized.providers.dfl.shared import PlayerReference, load_player_index
 from tracking_visualized.providers.dfl.timeline import (
     build_match_timeline,
     normalize_shot_time,
@@ -170,13 +171,42 @@ class ShotSummary:
         return self.outcome == ShotOutcome.GOAL
 
 
+@dataclass(frozen=True, slots=True)
+class _MatchInfo:
+    """What the loader needs from the metadata file, read once per load."""
+
+    metadata: DflMatchMetadata
+    players: dict[str, PlayerReference]
+
+    @property
+    def team_sides(self) -> dict[str, DflTeamSide]:
+        return {
+            self.metadata.home_team.team_id: DflTeamSide.HOME,
+            self.metadata.away_team.team_id: DflTeamSide.AWAY,
+        }
+
+
+def _read_match_info(files: DflMatchFiles) -> _MatchInfo:
+    return _MatchInfo(
+        metadata=load_match_metadata(files.metadata),
+        players=load_player_index(files.metadata),
+    )
+
+
+def _load_shots(files: DflMatchFiles, info: _MatchInfo) -> list[ShotEvent]:
+    return load_shot_events(
+        files.events, files.metadata, player_index=info.players, team_sides=info.team_sides
+    )
+
+
 def list_shots(files: DflMatchFiles) -> list[ShotSummary]:
     """List the shots and goals of a match in chronological order.
 
     Reads only the metadata and event files, not the large tracking file.
     """
 
-    metadata = load_match_metadata(files.metadata)
+    info = _read_match_info(files)
+    metadata = info.metadata
     team_names = {
         metadata.home_team.team_id: metadata.home_team.name,
         metadata.away_team.team_id: metadata.away_team.name,
@@ -193,7 +223,7 @@ def list_shots(files: DflMatchFiles) -> list[ShotSummary]:
             outcome=ShotOutcome(shot.outcome.value),
             xg=shot.xg,
         )
-        for shot in load_shot_events(files.events, files.metadata)
+        for shot in _load_shots(files, info)
     ]
 
     period_order = {PeriodType.FIRST_HALF: 0, PeriodType.SECOND_HALF: 1}
@@ -201,8 +231,8 @@ def list_shots(files: DflMatchFiles) -> list[ShotSummary]:
     return sorted(shots, key=lambda shot: (period_order[shot.period], shot.period_seconds))
 
 
-def _find_shot(files: DflMatchFiles, event_id: str) -> ShotEvent:
-    shots = load_shot_events(files.events, files.metadata)
+def _find_shot(files: DflMatchFiles, info: _MatchInfo, event_id: str) -> ShotEvent:
+    shots = _load_shots(files, info)
 
     for shot in shots:
         if shot.event_id == event_id:
@@ -243,14 +273,16 @@ def _stage_reporter(on_stage: StageCallback | None) -> StageCallback:
     return stage
 
 
-def _read_timeline(files: DflMatchFiles, stage: StageCallback) -> MatchTimeline:
+def _read_timeline(files: DflMatchFiles, info: _MatchInfo, stage: StageCallback) -> MatchTimeline:
     """First pass over the tracking file: build the match timeline from the ball."""
 
     stage("Scanning tracking data for the match timeline (1/2)")
 
     ball_samples = [
         sample
-        for sample in iter_tracking_samples(files.tracking, files.metadata, ball_only=True)
+        for sample in iter_tracking_samples(
+            files.tracking, files.metadata, ball_only=True, player_index=info.players
+        )
         if isinstance(sample, BallTrackingSample)
     ]
 
@@ -271,7 +303,7 @@ def _period_timeline(timeline: MatchTimeline, period: PeriodType) -> PeriodTimel
 
 def _build_match(
     files: DflMatchFiles,
-    metadata: DflMatchMetadata,
+    info: _MatchInfo,
     period_timeline: PeriodTimeline,
     window: tuple[FrameTime, ...],
     events: tuple[Event, ...],
@@ -279,12 +311,13 @@ def _build_match(
 ) -> Match:
     """Second pass over the tracking file: build a ``Match`` with the frames of ``window``."""
 
+    metadata = info.metadata
     period = period_timeline.period
     coordinate_system = create_coordinate_system(metadata.pitch_length, metadata.pitch_width)
 
     stage(f"Reading {len(window)} tracking frames (2/2)")
 
-    frames = _collect_frames(files, window, period, coordinate_system)
+    frames = _collect_frames(files, info, window, period, coordinate_system)
 
     team_sides = {
         metadata.home_team.team_id: TeamSide.HOME,
@@ -296,7 +329,7 @@ def _build_match(
     )
     players = tuple(
         Player(reference.person_id, reference.team_id, reference.name, reference.shirt_number)
-        for reference in load_player_index(files.metadata).values()
+        for reference in info.players.values()
         if reference.team_id in team_sides
     )
 
@@ -346,10 +379,10 @@ def load_event_match(
     stage = _stage_reporter(on_stage)
     stage("Reading match information and events")
 
-    metadata = load_match_metadata(files.metadata)
-    shot = _find_shot(files, event_id)
+    info = _read_match_info(files)
+    shot = _find_shot(files, info, event_id)
 
-    timeline = _read_timeline(files, stage)
+    timeline = _read_timeline(files, info, stage)
     normalized = normalize_shot_time(shot, timeline)
     period_timeline = _period_timeline(timeline, normalized.time.period)
 
@@ -379,7 +412,7 @@ def load_event_match(
         xg=shot.xg,
     )
 
-    return _build_match(files, metadata, period_timeline, window, (event,), stage)
+    return _build_match(files, info, period_timeline, window, (event,), stage)
 
 
 def load_time_window_match(
@@ -408,8 +441,8 @@ def load_time_window_match(
     stage = _stage_reporter(on_stage)
     stage("Reading match information")
 
-    metadata = load_match_metadata(files.metadata)
-    period_timeline = _period_timeline(_read_timeline(files, stage), period)
+    info = _read_match_info(files)
+    period_timeline = _period_timeline(_read_timeline(files, info, stage), period)
     window = frames_in_window(period_timeline.frames, start_seconds, end_seconds)
 
     if not window:
@@ -418,11 +451,12 @@ def load_time_window_match(
             f"of the {period.value}."
         )
 
-    return _build_match(files, metadata, period_timeline, window, (), stage)
+    return _build_match(files, info, period_timeline, window, (), stage)
 
 
 def _collect_frames(
     files: DflMatchFiles,
+    info: _MatchInfo,
     window: tuple[FrameTime, ...],
     period: PeriodType,
     coordinate_system: CoordinateSystem,
@@ -435,7 +469,7 @@ def _collect_frames(
     players: dict[int, dict[str, PlayerPosition]] = {number: {} for number in wanted}
     balls: dict[int, BallPosition] = {}
 
-    for sample in iter_tracking_samples(files.tracking, files.metadata):
+    for sample in iter_tracking_samples(files.tracking, files.metadata, player_index=info.players):
         if sample.period != tracking_period or sample.frame_number not in wanted:
             continue
 

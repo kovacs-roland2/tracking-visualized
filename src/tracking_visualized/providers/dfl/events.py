@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -232,8 +233,8 @@ def _parse_shot(
     event: ET.Element,
     shot: ET.Element,
     periods: list[PeriodWindow],
-    player_index: dict[str, PlayerReference],
-    team_sides: dict[str, TeamSide],
+    player_index: Mapping[str, PlayerReference],
+    team_sides: Mapping[str, TeamSide],
 ) -> ShotEvent:
     """
     Parse a shot event from the DFL event XML.
@@ -328,6 +329,9 @@ def _parse_shot(
 def load_shot_events(
     events_path: Path,
     metadata_path: Path,
+    *,
+    player_index: Mapping[str, PlayerReference] | None = None,
+    team_sides: Mapping[str, TeamSide] | None = None,
 ) -> list[ShotEvent]:
     """
     Load shot and goal events from DFL event XML.
@@ -335,6 +339,10 @@ def load_shot_events(
     Args:
         events_path: Path to the DFL event XML file.
         metadata_path: Path to the DFL match metadata XML file.
+        player_index: Players by person ID, if already loaded from ``metadata_path``.
+            Read from the file when omitted.
+        team_sides: Home/away side by team ID, if already loaded from ``metadata_path``.
+            Read from the file when omitted.
 
     Returns:
         A list of ShotEvent objects representing the shot and goal events in the match.
@@ -355,9 +363,11 @@ def load_shot_events(
 
     periods = _parse_period_windows(root)
 
-    player_index = load_player_index(metadata_path)
+    if player_index is None:
+        player_index = load_player_index(metadata_path)
 
-    team_sides = load_team_side_index(metadata_path)
+    if team_sides is None:
+        team_sides = load_team_side_index(metadata_path)
 
     shots: list[ShotEvent] = []
 
