@@ -105,7 +105,7 @@ uv run generate-video --match J03WMX --list-events
 | `--event EVENT_ID` | Shot or goal to render. |
 | `--format` | Output format; `tiktok` (default) is the only one for now. |
 | `-o`, `--output` | Output file, default `output/<match>_<event>_<format>.mp4`. Folders are created and an existing file is replaced. |
-| `--pre`, `--post` | Seconds before (default 5) and after (default 3) the event. |
+| `--pre`, `--post` | Seconds before (default 5) and after (default 3) the event; they cannot both be 0. |
 | `--data-dir` | Folder with the match folders, default `data/raw/dfl`. |
 | `--ffmpeg PATH` | FFmpeg to use, default `$FFMPEG_BINARY`, then `ffmpeg` on `PATH`. |
 | `--verbose` | Show the full traceback on errors. |

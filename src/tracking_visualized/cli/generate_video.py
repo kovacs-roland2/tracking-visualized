@@ -277,6 +277,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.list_events and not args.event:
         parser.error("--event is required (use --list-events to see the available IDs).")
 
+    if not args.list_events and args.pre + args.post <= 0:
+        parser.error("--pre and --post cannot both be 0; the clip would be a single frame.")
+
     try:
         return _generate(args)
     except KeyboardInterrupt:

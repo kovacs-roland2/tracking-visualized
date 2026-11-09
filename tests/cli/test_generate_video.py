@@ -130,6 +130,14 @@ def test_event_is_required_without_list_events(capsys):
     assert "--event is required" in capsys.readouterr().err
 
 
+def test_an_empty_clip_is_rejected(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--match", MATCH_ID, "--event", "E1", "--pre", "0", "--post", "0"])
+
+    assert exit_info.value.code == 2
+    assert "--pre and --post cannot both be 0" in capsys.readouterr().err
+
+
 # --- helpers -------------------------------------------------------------------------------
 
 
@@ -321,6 +329,34 @@ def test_a_clip_near_the_period_start_is_noted(
 
     assert code == EXIT_OK
     assert "Note: the clip is 11.0 s instead of 63.0 s" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("pre", "post"), [("0", "1"), ("1", "0")])
+def test_one_sided_clips_are_rendered(pre, post, dfl_data_dir, small_format, tmp_path, monkeypatch):
+    def fake_render(animator, output, config, *, progress):
+        return fake_video(output, animator.frame_count)
+
+    monkeypatch.setattr(generate_video, "render_video", fake_render)
+    arguments = run(
+        dfl_data_dir,
+        "--event",
+        GOAL_ID,
+        "--pre",
+        pre,
+        "--post",
+        post,
+        "-o",
+        str(tmp_path / "c.mp4"),
+    )
+
+    assert main(arguments) == EXIT_OK
+
+
+def test_list_events_ignores_the_clip_length(dfl_data_dir, capsys):
+    code = main(run(dfl_data_dir, "--list-events", "--pre", "0", "--post", "0"))
+
+    assert code == EXIT_OK
+    assert GOAL_ID in capsys.readouterr().out
 
 
 def test_an_untruncated_clip_with_off_grid_seconds_has_no_note(
