@@ -5,10 +5,12 @@ the sequence to output/sequence.gif using the animation engine.
 Scans the whole tracking file twice (once to find the first-half origin frame,
 once to collect positions for the trail window), so it takes about a minute on the full match.
 With --video the same clip is encoded to output/sequence.mp4 (needs FFmpeg) in the 1080x1920
-vertical TikTok layout: the pitch is rotated and fitted inside the layout margins.
+vertical TikTok layout: the pitch is rotated and fitted inside the layout margins, and the
+event text (type, time, shirt number, team) is shown above the pitch.
 """
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 import matplotlib
@@ -54,8 +56,10 @@ from tracking_visualized.rendering import (  # noqa: E402
     AnimationSettings,
     BallLayer,
     EventLayer,
-    EventStyle,
+    EventOverlay,
     FrameLayer,
+    OverlayLayoutError,
+    OverlayStyle,
     PitchDimensions,
     PitchStyle,
     PlayerLayer,
@@ -294,8 +298,12 @@ def main() -> None:
     pitch_style = PitchStyle(
         line_width=PitchStyle().line_width * (marker_scale if args.video else 1)
     )
-    event_style = EventStyle(
-        font_size=EventStyle().font_size * (layout.text_scale if args.video else 1)
+    overlay_defaults = OverlayStyle()
+    overlay_style = replace(
+        overlay_defaults,
+        title_font_size=overlay_defaults.title_font_size * layout.text_scale,
+        subtitle_font_size=overlay_defaults.subtitle_font_size * layout.text_scale,
+        line_gap=overlay_defaults.line_gap * layout.text_scale,
     )
 
     if args.video:
@@ -338,11 +346,32 @@ def main() -> None:
             ax,
             event,
             shirt_number=shot.shirt_number,
-            style=event_style,
+            show_label=not args.video,
             marker_size=config.player_marker_size * 1.5 * marker_scale,
             transform=transform,
         )
         layers.append(event_layer)
+
+        if args.video:
+            # In the video the event text sits in the top margin instead of over the pitch.
+            team = next(team for team in teams if team.team_id == event.team_id)
+            overlay = EventOverlay(
+                fig,
+                event,
+                anchor=video_config.text_anchor,
+                position=layout.text_position,
+                team=team,
+                team_style=team_styles[team.team_id],
+                shirt_number=shot.shirt_number,
+                style=overlay_style,
+            )
+
+            try:
+                overlay.validate_fit(video_config)
+            except OverlayLayoutError as error:
+                raise SystemExit(str(error)) from error
+
+            layers.append(overlay)
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 

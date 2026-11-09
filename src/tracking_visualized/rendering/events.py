@@ -79,6 +79,18 @@ def format_event_type(event: Event) -> str:
     return event.event_type.value.upper()
 
 
+def find_event_shirt_number(match: Match, event: Event) -> int | None:
+    """Shirt number of the player involved in ``event``, if the match knows them."""
+
+    if event.player_id is None:
+        return None
+
+    try:
+        return match.get_player(event.player_id).shirt_number
+    except KeyError:
+        return None
+
+
 class EventLayer:
     """Highlights a selected shot or goal while the sequence is near the event.
 
@@ -93,6 +105,9 @@ class EventLayer:
     is visible from ``show_before_seconds`` before the event until
     ``show_after_seconds`` after it, measured on the match time of the frame, and
     hidden otherwise (including in a different period).
+
+    Pass ``show_label=False`` to keep only the marker, e.g. when the event text
+    is shown by an ``EventOverlay`` instead.
 
     ``transform`` maps the event location to the screen and defaults to
     ``ax.transData``; pass ``pitch_data_transform`` for a rotated pitch. The banner
@@ -111,6 +126,7 @@ class EventLayer:
         marker_size: float = 18.0,
         marker_zorder: float = 2.5,
         label_zorder: float = 6.0,
+        show_label: bool = True,
         transform: Transform | None = None,
     ) -> None:
         if show_before_seconds < 0:
@@ -132,6 +148,7 @@ class EventLayer:
         self.show_before_seconds = show_before_seconds
         self.show_after_seconds = show_after_seconds
 
+        self.show_label = show_label
         self.is_visible: bool = False
 
         has_position = event.x is not None and event.y is not None
@@ -203,13 +220,7 @@ class EventLayer:
     ) -> "EventLayer":
         """Create a layer, looking up the shirt number of the event's player."""
 
-        shirt_number: int | None = None
-
-        if event.player_id is not None:
-            try:
-                shirt_number = match.get_player(event.player_id).shirt_number
-            except KeyError:
-                shirt_number = None
+        shirt_number = find_event_shirt_number(match, event)
 
         return cls(ax, event, shirt_number=shirt_number, style=style, **kwargs)
 
@@ -250,7 +261,7 @@ class EventLayer:
         has_position = len(self.marker.get_offsets()) > 0
 
         self.marker.set_visible(self.is_visible and has_position)
-        self.label.set_visible(self.is_visible)
+        self.label.set_visible(self.is_visible and self.show_label)
 
         return self.artists
 
@@ -286,6 +297,7 @@ __all__ = [
     "EventLayer",
     "EventStyle",
     "draw_event",
+    "find_event_shirt_number",
     "format_event_time",
     "format_event_type",
 ]

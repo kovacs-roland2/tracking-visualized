@@ -276,3 +276,13 @@ def test_marker_is_behind_players_and_label_is_on_top(ax):
     # Players are drawn at zorder 3, the ball at 4.
     assert layer.marker.get_zorder() < 3.0
     assert layer.label.get_zorder() > 4.0
+
+
+def test_label_can_be_switched_off_while_the_marker_stays(ax):
+    layer = EventLayer(ax, make_event(), show_label=False)
+
+    layer.update(make_frame(EVENT_TIME.seconds))
+
+    assert layer.is_visible
+    assert layer.marker.get_visible()
+    assert not layer.label.get_visible()

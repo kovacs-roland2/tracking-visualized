@@ -16,8 +16,15 @@ from tracking_visualized.rendering.events import (
     EventLayer,
     EventStyle,
     draw_event,
+    find_event_shirt_number,
     format_event_time,
     format_event_type,
+)
+from tracking_visualized.rendering.overlays import (
+    EventOverlay,
+    OverlayLayoutError,
+    OverlayStyle,
+    shorten_text,
 )
 from tracking_visualized.rendering.pitch import (
     PitchDimensions,
@@ -64,8 +71,11 @@ __all__ = [
     "BallLayer",
     "BallStyle",
     "EventLayer",
+    "EventOverlay",
     "EventStyle",
     "FFmpegNotFoundError",
+    "OverlayLayoutError",
+    "OverlayStyle",
     "FrameLayer",
     "PitchDimensions",
     "PitchDimensionsError",
@@ -89,6 +99,7 @@ __all__ = [
     "draw_event",
     "draw_pitch",
     "draw_players",
+    "find_event_shirt_number",
     "find_ffmpeg",
     "find_ffprobe",
     "format_event_time",
@@ -97,5 +108,6 @@ __all__ = [
     "pitch_view_transform",
     "render_video",
     "resolve_team_styles",
+    "shorten_text",
     "validate_video_info",
 ]

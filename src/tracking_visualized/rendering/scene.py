@@ -14,6 +14,11 @@ from tracking_visualized.rendering.animation import (
 )
 from tracking_visualized.rendering.ball import BallLayer, BallStyle
 from tracking_visualized.rendering.events import EventLayer, EventStyle
+from tracking_visualized.rendering.overlays import (
+    EventOverlay,
+    OverlayLayoutError,
+    OverlayStyle,
+)
 from tracking_visualized.rendering.pitch import (
     PitchDimensions,
     PitchStyle,
@@ -48,6 +53,7 @@ def build_sequence_scene(
     away_style: TeamStyle | None = None,
     ball_style: BallStyle | None = None,
     event_style: EventStyle | None = None,
+    show_event_label: bool = True,
     orientation: PitchOrientation = PitchOrientation.HORIZONTAL,
 ) -> SequenceScene:
     """Create the pitch and layers for a match sequence.
@@ -55,6 +61,7 @@ def build_sequence_scene(
     Layers are returned in drawing order: trails, players, ball and, for an
     event sequence, the event indicator. With a vertical ``orientation`` the pitch
     and all layers are rotated together; frames still hold canonical coordinates.
+    ``show_event_label=False`` leaves out the event banner and keeps the marker.
     """
 
     config = config or RenderingConfig()
@@ -97,6 +104,7 @@ def build_sequence_scene(
                 match,
                 sequence.event,
                 style=event_style,
+                show_label=show_event_label,
                 marker_size=config.player_marker_size * EVENT_MARKER_SCALE,
                 transform=transform,
             )
@@ -154,6 +162,7 @@ def create_video_animator(
     config: RenderingConfig | None = None,
     pitch_style: PitchStyle | None = None,
     event_style: EventStyle | None = None,
+    overlay_style: OverlayStyle | None = None,
     **scene_kwargs,
 ) -> SequenceAnimator:
     """Build an animator whose figure fills the video frame.
@@ -162,11 +171,19 @@ def create_video_animator(
     laid out as described by ``video_config.layout``: rotated to run along the tall
     side of the frame, fitted inside the margins and centered. The layout's
     ``marker_scale`` enlarges markers, trails and pitch lines relative to ``config``
-    and its ``text_scale`` enlarges the event banner text. Styles passed explicitly
-    (``pitch_style``, ``event_style``) are used as given, without scaling.
+    and its ``text_scale`` enlarges the text overlay. For an event sequence the event
+    text is shown by an ``EventOverlay`` in the margin chosen by
+    ``layout.text_position`` (instead of the banner over the pitch), with event type,
+    time, shirt number and team name. Styles passed explicitly (``pitch_style``,
+    ``overlay_style``) are used as given, without scaling.
 
     The frame rate comes from ``video_config``, so the result can be passed
     straight to ``render_video``.
+
+    Raises:
+        OverlayLayoutError: If the event text does not fit in its margin. The video
+            would otherwise have no visible event text, so this is an error rather
+            than a silent fallback.
     """
 
     video_config = video_config or VideoConfig()
@@ -187,10 +204,13 @@ def create_video_animator(
             default_style, line_width=default_style.line_width * layout.marker_scale
         )
 
-    if event_style is None:
-        default_event_style = EventStyle()
-        event_style = replace(
-            default_event_style, font_size=default_event_style.font_size * layout.text_scale
+    if overlay_style is None:
+        default_overlay_style = OverlayStyle()
+        overlay_style = replace(
+            default_overlay_style,
+            title_font_size=default_overlay_style.title_font_size * layout.text_scale,
+            subtitle_font_size=default_overlay_style.subtitle_font_size * layout.text_scale,
+            line_gap=default_overlay_style.line_gap * layout.text_scale,
         )
 
     scene = build_sequence_scene(
@@ -200,16 +220,36 @@ def create_video_animator(
         figsize=video_config.figure_size_inches,
         pitch_style=pitch_style,
         event_style=event_style,
+        show_event_label=False,
         orientation=layout.orientation,
         **scene_kwargs,
     )
 
     apply_video_layout(scene.fig, scene.ax, video_config, pitch_style)
 
+    layers = scene.layers
+
+    if isinstance(sequence, EventSequence):
+        try:
+            overlay = EventOverlay.from_match(
+                scene.fig,
+                match,
+                sequence.event,
+                video_config,
+                home_style=scene_kwargs.get("home_style"),
+                away_style=scene_kwargs.get("away_style"),
+                style=overlay_style,
+            )
+        except OverlayLayoutError:
+            plt.close(scene.fig)
+            raise
+
+        layers = (*layers, overlay)
+
     return SequenceAnimator(
         scene.fig,
         sequence.frames,
-        scene.layers,
+        layers,
         AnimationSettings(fps=video_config.fps),
     )
 

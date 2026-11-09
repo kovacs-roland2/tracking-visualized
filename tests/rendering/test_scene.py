@@ -27,6 +27,7 @@ from tracking_visualized.rendering import (  # noqa: E402
     AnimationSettings,
     BallLayer,
     EventLayer,
+    EventOverlay,
     PlayerLayer,
     SequenceAnimator,
     TrailLayer,
@@ -209,8 +210,8 @@ def test_video_animator_default_canvas_is_1080_by_1920():
     assert tuple(animator.fig.canvas.get_width_height()) == (1080, 1920)
 
 
-def test_video_animator_includes_the_event_layer_for_event_sequences():
+def test_video_animator_includes_the_event_layer_and_overlay_for_event_sequences():
     frames = make_frames()
     animator = create_video_animator(make_match(frames), make_event_sequence(frames))
 
-    assert [type(layer) for layer in animator.layers][-1] is EventLayer
+    assert [type(layer) for layer in animator.layers][-2:] == [EventLayer, EventOverlay]

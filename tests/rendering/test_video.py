@@ -34,7 +34,9 @@ from tracking_visualized.rendering.video import (  # noqa: E402
     probe_video,
 )
 
-NO_MARGINS = VideoLayoutConfig(margin_top=0, margin_bottom=0, margin_left=0, margin_right=0)
+NO_MARGINS = VideoLayoutConfig(
+    margin_top=0, margin_bottom=0, margin_left=0, margin_right=0, text_gap=0
+)
 SMALL = VideoConfig(width=64, height=112, fps=10, dpi=50, layout=NO_MARGINS)
 
 
