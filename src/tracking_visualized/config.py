@@ -249,6 +249,35 @@ class VideoConfig(BaseModel):
         )
 
 
+DEFAULT_VIDEO_FORMAT = "tiktok"
+
+
+def video_format_names() -> tuple[str, ...]:
+    """Names of the supported video formats, e.g. ``tiktok``."""
+
+    return (DEFAULT_VIDEO_FORMAT,)
+
+
+def video_config_for_format(name: str) -> VideoConfig:
+    """Return the video settings of a named output format.
+
+    ``tiktok`` is the 1080x1920 (9:16) vertical layout with the pitch rotated and
+    the event text above it.
+
+    Raises:
+        ValueError: If the format is unknown; the message lists the valid names.
+    """
+
+    normalized = name.strip().lower()
+
+    if normalized == "tiktok":
+        return VideoConfig()
+
+    raise ValueError(
+        f"Unknown video format '{name}'. Choose one of: {', '.join(video_format_names())}."
+    )
+
+
 class SequenceConfig(BaseModel):
     """Settings controlling which part of a match is rendered."""
 
@@ -299,6 +328,7 @@ class AppConfig(BaseModel):
 
 
 __all__ = [
+    "DEFAULT_VIDEO_FORMAT",
     "H264_PRESETS",
     "AppConfig",
     "PathConfig",
@@ -310,4 +340,6 @@ __all__ = [
     "TrackingRepairConfig",
     "VideoConfig",
     "VideoLayoutConfig",
+    "video_config_for_format",
+    "video_format_names",
 ]

@@ -1,9 +1,9 @@
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Iterator
 
 from tracking_visualized.providers.dfl.shared import PlayerReference, load_player_index
 from tracking_visualized.providers.dfl.utils import (
@@ -209,6 +209,9 @@ TrackingSample = PlayerTrackingSample | BallTrackingSample
 def iter_tracking_samples(
     tracking_path: Path,
     metadata_path: Path,
+    *,
+    ball_only: bool = False,
+    player_index: Mapping[str, PlayerReference] | None = None,
 ) -> Iterator[TrackingSample]:
     """
     Stream player and ball samples from DFL tracking XML.
@@ -216,6 +219,10 @@ def iter_tracking_samples(
     Args:
         tracking_path: The path to the tracking XML file.
         metadata_path: The path to the match metadata XML file.
+        ball_only: Yield only ball samples. Player FrameSets are skipped without
+            parsing their frames, which makes a full pass much faster.
+        player_index: Players by person ID, if already loaded from ``metadata_path``.
+            Read from the file when omitted.
 
     Yields:
         PlayerTrackingSample or BallTrackingSample objects for each frame in the tracking data."""
@@ -226,7 +233,8 @@ def iter_tracking_samples(
     if not metadata_path.is_file():
         raise FileNotFoundError(f"Metadata file does not exist: {metadata_path}")
 
-    player_index = load_player_index(metadata_path)
+    if player_index is None:
+        player_index = load_player_index(metadata_path)
 
     try:
         context = ET.iterparse(
@@ -258,6 +266,10 @@ def iter_tracking_samples(
                         frame,
                         period,
                     )
+
+            elif ball_only:
+                frame_set.clear()
+                continue
 
             else:
                 person_id = frame_set.get("PersonId")

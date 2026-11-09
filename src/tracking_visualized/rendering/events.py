@@ -91,6 +91,18 @@ def find_event_shirt_number(match: Match, event: Event) -> int | None:
         return None
 
 
+def find_event_player_name(match: Match, event: Event) -> str | None:
+    """Name of the player involved in ``event``, if the match knows it."""
+
+    if event.player_id is None:
+        return None
+
+    try:
+        return match.get_player(event.player_id).name
+    except KeyError:
+        return None
+
+
 class EventLayer:
     """Highlights a selected shot or goal while the sequence is near the event.
 
@@ -297,6 +309,7 @@ __all__ = [
     "EventLayer",
     "EventStyle",
     "draw_event",
+    "find_event_player_name",
     "find_event_shirt_number",
     "format_event_time",
     "format_event_type",

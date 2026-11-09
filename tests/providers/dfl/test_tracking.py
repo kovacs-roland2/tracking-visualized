@@ -10,6 +10,7 @@ from tracking_visualized.providers.dfl import (
     TrackingTeam,
     iter_tracking_samples,
 )
+from tracking_visualized.providers.dfl.shared import load_player_index
 
 MATCH_METADATA_XML = """\
 <PutDataRequest>
@@ -306,3 +307,54 @@ def test_missing_frame_number_raises_error(
                 metadata_path,
             )
         )
+
+
+def test_ball_only_yields_the_same_ball_samples(tmp_path: Path):
+    tracking_path, metadata_path = write_files(tmp_path)
+
+    all_balls = [
+        sample
+        for sample in iter_tracking_samples(tracking_path, metadata_path)
+        if isinstance(sample, BallTrackingSample)
+    ]
+    ball_only = list(iter_tracking_samples(tracking_path, metadata_path, ball_only=True))
+
+    assert ball_only == all_balls
+    assert all(isinstance(sample, BallTrackingSample) for sample in ball_only)
+
+
+def test_ball_only_does_not_parse_player_frames(tmp_path: Path):
+    tracking_path, metadata_path = write_files(tmp_path)
+    # A player frame without a frame number would fail if it were parsed.
+    tracking_path.write_text(
+        TRACKING_XML.replace('N="101"', "", 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(DflTrackingError):
+        list(iter_tracking_samples(tracking_path, metadata_path))
+
+    samples = list(iter_tracking_samples(tracking_path, metadata_path, ball_only=True))
+
+    assert [sample.frame_number for sample in samples] == [100]
+
+
+@pytest.mark.parametrize(
+    ("attributes", "expected"),
+    [
+        ('Shortname="Y. Sommer" FirstName="Yann" LastName="Sommer"', "Y. Sommer"),
+        ('FirstName="Yann" LastName="Sommer"', "Yann Sommer"),
+        ('Shortname="  " LastName="Sommer"', "Sommer"),
+        ("", None),
+    ],
+)
+def test_player_names_are_read_from_dfl_attributes(tmp_path: Path, attributes, expected):
+    metadata_path = tmp_path / "metadata.xml"
+    metadata_path.write_text(
+        MATCH_METADATA_XML.replace(
+            'PersonId="DFL-OBJ-HOME-1"', f'PersonId="DFL-OBJ-HOME-1" {attributes}', 1
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_player_index(metadata_path)["DFL-OBJ-HOME-1"].name == expected

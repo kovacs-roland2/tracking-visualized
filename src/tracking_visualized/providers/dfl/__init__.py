@@ -12,6 +12,17 @@ from tracking_visualized.providers.dfl.events import (
     ShotOutcome,
     load_shot_events,
 )
+from tracking_visualized.providers.dfl.loader import (
+    DEFAULT_DFL_DIR,
+    DflDatasetError,
+    DflEventNotFoundError,
+    DflMatchFiles,
+    ShotSummary,
+    list_shots,
+    load_event_match,
+    load_time_window_match,
+    normalize_match_id,
+)
 from tracking_visualized.providers.dfl.match_metadata import (
     CompetitionMetadata,
     DflMatchMetadataError,
@@ -37,6 +48,15 @@ from tracking_visualized.providers.dfl.tracking import (
 )
 
 __all__ = [
+    "DEFAULT_DFL_DIR",
+    "DflDatasetError",
+    "DflEventNotFoundError",
+    "DflMatchFiles",
+    "ShotSummary",
+    "list_shots",
+    "load_event_match",
+    "load_time_window_match",
+    "normalize_match_id",
     "CompetitionMetadata",
     "DflMatchMetadataError",
     "MatchMetadata",
