@@ -1,3 +1,8 @@
+from tracking_visualized.validation.commentary import (
+    CommentaryScriptValidationError,
+    validate_commentary_script,
+    validate_commentary_script_or_raise,
+)
 from tracking_visualized.validation.match import (
     MatchValidationError,
     ValidationIssue,
@@ -8,6 +13,9 @@ from tracking_visualized.validation.match import (
 )
 
 __all__ = [
+    "CommentaryScriptValidationError",
+    "validate_commentary_script",
+    "validate_commentary_script_or_raise",
     "MatchValidationError",
     "ValidationIssue",
     "ValidationReport",
