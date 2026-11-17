@@ -55,6 +55,17 @@ def test_highlight_needs_a_player_id():
         Highlight(" ", HighlightRole.SHOOTER)
 
 
+def test_highlight_role_may_be_given_as_text_but_is_stored_as_the_enum():
+    highlight = Highlight("p1", "shooter")
+
+    assert highlight.role is HighlightRole.SHOOTER
+
+
+def test_unknown_highlight_roles_are_rejected():
+    with pytest.raises(ValueError, match="Unknown highlight role 'striker'; use one of: shooter"):
+        Highlight("p1", "striker")
+
+
 def test_highlight_roles_cover_the_ticket_examples():
     assert {"shooter", "assist", "defender", "goalkeeper"} <= {role.value for role in HighlightRole}
 

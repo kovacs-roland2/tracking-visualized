@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from tracking_visualized.domain import (
@@ -157,6 +159,52 @@ def test_beats_exactly_at_the_clip_edges_are_fine(match, sequence):
     assert validate_commentary_script(script, match, sequence).is_valid
 
 
+def shifted_match(event_seconds: float) -> Match:
+    """``make_match`` moved so that the event is at ``event_seconds``."""
+
+    base = make_match()
+    shift = event_seconds - base.events[0].time.seconds
+
+    return Match(
+        metadata=base.metadata,
+        coordinate_system=base.coordinate_system,
+        periods=(),
+        teams=base.teams,
+        players=base.players,
+        frames=tuple(
+            replace(
+                frame,
+                time=MatchTime(PeriodType.FIRST_HALF, round(frame.time.seconds + shift, 6)),
+            )
+            for frame in base.frames
+        ),
+        events=(replace(base.events[0], time=MatchTime(PeriodType.FIRST_HALF, event_seconds)),),
+    )
+
+
+def test_clip_edges_written_to_two_decimals_are_fine():
+    # 64.04 - 5 is 59.040000000000006 in floating point, so a beat written as 59.04
+    # starts a hair before the clip.
+    match = shifted_match(64.04)
+    sequence = select_event_sequence(match, EVENT_ID, pre_event_seconds=5, post_event_seconds=3)
+    script = make_script(
+        Beat(round(sequence.start_time.seconds, 2), "First frame"),
+        Beat(64.04, "Shot", duration_seconds=round(sequence.end_time.seconds - 64.04, 2)),
+    )
+
+    assert sequence.start_time.seconds > 59.04
+    assert validate_commentary_script(script, match, sequence).is_valid
+
+
+def test_beats_clearly_outside_the_clip_are_still_errors(match, sequence):
+    script = make_script(Beat(1.95, "Before"), Beat(14.0, "Too long", duration_seconds=1.05))
+
+    assert codes(validate_commentary_script(script, match, sequence)) == [
+        "commentary_beat_outside_clip",
+        "commentary_beat_outside_clip",
+    ]
+
+
 def test_pauses_do_not_count_as_match_time(match, sequence):
     # A 10 s pause on beat 1 does not overlap beat 2, which starts 1 s later in match time.
     script = make_script(
@@ -167,6 +215,12 @@ def test_pauses_do_not_count_as_match_time(match, sequence):
 
 
 # --- identity ----------------------------------------------------------------------------
+
+
+def test_the_short_match_id_names_the_same_match(match, sequence):
+    script = make_script(Beat(3.0, "x"), match_id="TEST")
+
+    assert validate_commentary_script(script, match, sequence).is_valid
 
 
 def test_other_match_event_and_period_are_errors(match, sequence):

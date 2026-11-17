@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 
+from tracking_visualized.commentary.io import short_match_id
 from tracking_visualized.domain import (
     AnnotationTarget,
     ArrowAnnotation,
@@ -20,7 +21,9 @@ from tracking_visualized.validation.match import (
 )
 
 DEFAULT_MAX_ISSUES = 50
-TIME_EPSILON = 1e-9
+# Beat times are written by an LLM or by hand, usually to two decimals, while clip
+# edges come from float arithmetic. Times this close count as equal (well under a frame).
+TIME_TOLERANCE_SECONDS = 0.01
 
 
 class CommentaryScriptValidationError(ValueError):
@@ -86,7 +89,8 @@ def _points_of(beat: Beat) -> Iterable[PointTarget]:
 def _check_identity(
     script: CommentaryScript, match: Match, sequence: EventSequence, issues: _Issues
 ) -> None:
-    if script.match_id != match.metadata.match_id:
+    # J03WMX and DFL-MAT-J03WMX name the same match.
+    if short_match_id(script.match_id) != short_match_id(match.metadata.match_id):
         issues.error(
             "commentary_match_mismatch",
             f"The script is for match '{script.match_id}', not '{match.metadata.match_id}'.",
@@ -113,7 +117,11 @@ def _check_times(script: CommentaryScript, sequence: EventSequence, issues: _Iss
     for index, beat in enumerate(script.beats):
         name = _beat_name(index, beat)
 
-        if not clip_start <= beat.start_seconds <= clip_end:
+        if not (
+            clip_start - TIME_TOLERANCE_SECONDS
+            <= beat.start_seconds
+            <= clip_end + TIME_TOLERANCE_SECONDS
+        ):
             issues.error(
                 "commentary_beat_outside_clip",
                 f"{name} starts outside the clip, which runs from {clip_start:.2f} s "
@@ -122,7 +130,7 @@ def _check_times(script: CommentaryScript, sequence: EventSequence, issues: _Iss
 
         end = beat.end_seconds
 
-        if end is not None and end > clip_end + TIME_EPSILON:
+        if end is not None and end > clip_end + TIME_TOLERANCE_SECONDS:
             issues.error(
                 "commentary_beat_outside_clip",
                 f"{name} lasts until {end:.2f} s, after the clip ends at {clip_end:.2f} s.",
@@ -140,7 +148,7 @@ def _check_times(script: CommentaryScript, sequence: EventSequence, issues: _Iss
 
         end = previous.end_seconds
 
-        if end is not None and end > current.start_seconds + TIME_EPSILON:
+        if end is not None and end > current.start_seconds + TIME_TOLERANCE_SECONDS:
             issues.error(
                 "commentary_beats_overlap",
                 f"Beat {index + 1} (at {previous.start_seconds:g} s) lasts until {end:.2f} s, "

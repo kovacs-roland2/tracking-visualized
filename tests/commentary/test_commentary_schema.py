@@ -8,6 +8,7 @@ from tracking_visualized.commentary import (
     script_to_domain,
 )
 from tracking_visualized.domain import (
+    COMMENTARY_SCRIPT_VERSION,
     ArrowAnnotation,
     Beat,
     CommentaryScript,
@@ -201,6 +202,7 @@ def test_json_schema_describes_the_script_for_the_llm():
     assert set(schema["required"]) == {"version", "match_id", "event_id", "period", "beats"}
     assert schema["additionalProperties"] is False
     assert schema["properties"]["beats"]["minItems"] == 1
+    assert schema["properties"]["version"]["const"] == COMMENTARY_SCRIPT_VERSION
 
     beat = definitions["BeatModel"]["properties"]
     assert beat["start_seconds"]["minimum"] == 0

@@ -76,6 +76,15 @@ class Highlight:
     def __post_init__(self) -> None:
         _require_text(self.player_id, "Player ID")
 
+        try:
+            role = HighlightRole(self.role)
+        except ValueError as exc:
+            roles = ", ".join(role.value for role in HighlightRole)
+            raise ValueError(f"Unknown highlight role '{self.role}'; use one of: {roles}.") from exc
+
+        # Accept the plain string form too, but always store the enum.
+        object.__setattr__(self, "role", role)
+
 
 def _require_distinct_ends(start: AnnotationTarget, end: AnnotationTarget, kind: str) -> None:
     if start == end:

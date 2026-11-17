@@ -24,6 +24,15 @@ class CommentaryScriptError(ValueError):
     """Raised when a script file cannot be read, parsed or understood."""
 
 
+def short_match_id(match_id: str) -> str:
+    """The match ID without the ``DFL-MAT-`` prefix, e.g. ``J03WMX``.
+
+    Scripts may name the match either way; compare IDs in this form.
+    """
+
+    return match_id.strip().removeprefix(MATCH_ID_PREFIX)
+
+
 def default_script_path(
     match_id: str,
     event_id: str,
@@ -34,8 +43,9 @@ def default_script_path(
     The match may be given as ``J03WMX`` or ``DFL-MAT-J03WMX``; both name the same file.
     """
 
-    short_id = match_id.strip().removeprefix(MATCH_ID_PREFIX)
-    name = _UNSAFE_FILENAME_CHARS.sub("_", f"{short_id}_{event_id.strip()}_commentary")
+    name = _UNSAFE_FILENAME_CHARS.sub(
+        "_", f"{short_match_id(match_id)}_{event_id.strip()}_commentary"
+    )
 
     return Path(output_dir) / f"{name}.json"
 
@@ -176,4 +186,5 @@ __all__ = [
     "parse_script",
     "save_script",
     "script_to_json",
+    "short_match_id",
 ]

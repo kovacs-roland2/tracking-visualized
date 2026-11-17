@@ -7,6 +7,7 @@ from tracking_visualized.commentary.io import (
     parse_script,
     save_script,
     script_to_json,
+    short_match_id,
 )
 from tracking_visualized.commentary.schema import (
     CommentaryScriptModel,
@@ -26,4 +27,5 @@ __all__ = [
     "script_from_domain",
     "script_to_domain",
     "script_to_json",
+    "short_match_id",
 ]

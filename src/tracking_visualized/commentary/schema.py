@@ -137,7 +137,11 @@ class BeatModel(_StrictModel):
 class CommentaryScriptModel(_StrictModel):
     """The commentary for one event sequence."""
 
-    version: int = Field(description=f"Script format version; always {COMMENTARY_SCRIPT_VERSION}.")
+    # A literal, so the JSON schema has a ``const`` and structured output can only
+    # produce the supported version.
+    version: Literal[COMMENTARY_SCRIPT_VERSION] = Field(  # type: ignore[valid-type]
+        description=f"Script format version; always {COMMENTARY_SCRIPT_VERSION}."
+    )
     match_id: str = Field(min_length=1, description="Full match ID, e.g. DFL-MAT-J03WMX.")
     event_id: str = Field(min_length=1, description="ID of the event the clip is built around.")
     period: PeriodType = Field(description="Match period of the clip; beat times are in it.")
